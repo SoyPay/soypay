@@ -19,7 +19,6 @@
 #include <string.h>
 #include <utility>
 #include <vector>
-
 #include "version.h"
 #include "uint256.h"
 #include <openssl/ripemd.h>
@@ -27,16 +26,17 @@
 #include <boost/tuple/tuple.hpp>
 #include <boost/type_traits/is_fundamental.hpp>
 
+
 class CAutoFile;
 class CDataStream;
-class CScript;
+//class CScript;
 class CBaseTransaction;
 class CRegisterAccountTx;
 class CTransaction;
-class CAppealTransaction;
-class CSecureTransaction;
 class CFreezeTransaction;
 class CRewardTransaction;
+
+
 
 static const unsigned int MAX_SIZE = 0x02000000;
 
@@ -379,6 +379,8 @@ public:
 template<typename I>
 CVarInt<I> WrapVarInt(I& n) { return CVarInt<I>(n); }
 
+
+
 //
 // Forward declarations
 //
@@ -400,9 +402,9 @@ template<typename Stream, typename T, typename A> void Unserialize_impl(Stream& 
 template<typename Stream, typename T, typename A> inline void Unserialize(Stream& is, vector<T, A>& v, int nType, int nVersion);
 
 // others derived from vector
-extern inline unsigned int GetSerializeSize(const CScript& v, int nType, int nVersion);
-template<typename Stream> void Serialize(Stream& os, const CScript& v, int nType, int nVersion);
-template<typename Stream> void Unserialize(Stream& is, CScript& v, int nType, int nVersion);
+//extern inline unsigned int GetSerializeSize(const CScript& v, int nType, int nVersion);
+//template<typename Stream> void Serialize(Stream& os, const CScript& v, int nType, int nVersion);
+//template<typename Stream> void Unserialize(Stream& is, CScript& v, int nType, int nVersion);
 
 // pair
 template<typename K, typename T> unsigned int GetSerializeSize(const pair<K, T>& item, int nType, int nVersion);
@@ -433,6 +435,7 @@ template<typename Stream, typename K, typename Pred, typename A> void Unserializ
 extern inline unsigned int GetSerializeSize(const std::shared_ptr<CBaseTransaction> &pa, int nType, int nVersion);
 template<typename Stream> void Serialize(Stream& os, const std::shared_ptr<CBaseTransaction> &pa, int nType, int nVersion);
 template<typename Stream> void Unserialize(Stream& is, std::shared_ptr<CBaseTransaction> &pa, int nType, int nVersion);
+
 
 class CSerActionGetSerializeSize { };
 class CSerActionSerialize { };
@@ -602,22 +605,22 @@ inline void Unserialize(Stream& is, vector<T, A>& v, int nType, int nVersion)
 //
 // others derived from vector
 //
-inline unsigned int GetSerializeSize(const CScript& v, int nType, int nVersion)
-{
-    return GetSerializeSize((const vector<unsigned char>&)v, nType, nVersion);
-}
-
-template<typename Stream>
-void Serialize(Stream& os, const CScript& v, int nType, int nVersion)
-{
-    Serialize(os, (const vector<unsigned char>&)v, nType, nVersion);
-}
-
-template<typename Stream>
-void Unserialize(Stream& is, CScript& v, int nType, int nVersion)
-{
-    Unserialize(is, (vector<unsigned char>&)v, nType, nVersion);
-}
+//inline unsigned int GetSerializeSize(const CScript& v, int nType, int nVersion)
+//{
+//    return GetSerializeSize((const vector<unsigned char>&)v, nType, nVersion);
+//}
+//
+//template<typename Stream>
+//void Serialize(Stream& os, const CScript& v, int nType, int nVersion)
+//{
+//    Serialize(os, (const vector<unsigned char>&)v, nType, nVersion);
+//}
+//
+//template<typename Stream>
+//void Unserialize(Stream& is, CScript& v, int nType, int nVersion)
+//{
+//    Unserialize(is, (vector<unsigned char>&)v, nType, nVersion);
+//}
 
 
 

@@ -75,6 +75,24 @@ public:
 uint64_t nLastBlockTx = 0;
 uint64_t nLastBlockSize = 0;
 
+//base on the last 500 blocks
+uint64_t GetElementForBurn(CBlockIndex* pindex)
+{
+	uint64_t sumfee;
+	unsigned int nBlock = SysCfg().GetArg("-blocksizeforburn", DEFAULT_BURN_BLOCK_SIZE);
+//	CBlockIndex* pindex = chainActive.Tip();
+	if (nBlock > pindex->nHeight) {
+		return 100000;
+	} else {
+		for (int ii = 0; ii < nBlock; ii++) {
+			sumfee += pindex->GetBlockFee();
+			pindex = pindex->pprev;
+		}
+
+		return (sumfee / nBlock);
+	}
+}
+
 // We want to sort transactions by priority and fee, so:
 
 void GetPriorityTx(vector<TxPriority> &vecPriority, map<uint256, vector<COrphan*> > &mapDependers) {
@@ -85,20 +103,25 @@ void GetPriorityTx(vector<TxPriority> &vecPriority, map<uint256, vector<COrphan*
 	list<COrphan> vOrphan; // list memory doesn't move
 	double dPriority = 0;
 	for (map<uint256, CTxMemPoolEntry>::iterator mi = mempool.mapTx.begin(); mi != mempool.mapTx.end(); ++mi) {
-		int nTxHeight = mi->second.GetHeight();
+		int nTxHeight = mi->second.GetHeight();//get Chain height when the tx entering the mempool
 		CBaseTransaction *pBaseTx = mi->second.GetTx().get();
 
 		if (!pTxCacheTip->IsContainTx(pBaseTx->GetHash())) {
-			if (pBaseTx->nTxType == APPEAL_TX) {
-				const CAppealTransaction *patx = (const CAppealTransaction *) pBaseTx;
-				if (!pTxCacheTip->IsContainTx(patx->preTxHash)) {
-					continue;
-				}
-			} else {
-
-			}
 			unsigned int nTxSize = ::GetSerializeSize(pBaseTx->GetNewInstance(), SER_NETWORK, PROTOCOL_VERSION);
+#if 0
+			{
+				uint64_t element = GetElementForBurn();
+				uint64_t burnfee = xx(element, pBaseTx);
+				if(pBaseTx->GetFee() < burnfee)
+				{
+					LogPrint("INFO","the pBaseTx->GetFee() < burnfee\n");
+					assert(0);
+				}
+				double dFeePerKb = double(pBaseTx->GetFee() - ) / (double(nTxSize) / 1000.0);
+			}
+#else
 			double dFeePerKb = double(pBaseTx->GetFee()) / (double(nTxSize) / 1000.0);
+#endif
 			dPriority = 1000.0 / double(nTxSize);
 			vecPriority.push_back(TxPriority(dPriority, dFeePerKb, mi->second.GetTx()));
 		}
@@ -106,11 +129,11 @@ void GetPriorityTx(vector<TxPriority> &vecPriority, map<uint256, vector<COrphan*
 	}
 }
 
-CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn) {
-//    // Create new block
-	auto_ptr<CBlockTemplate> pblocktemplate(new CBlockTemplate());
-	if (!pblocktemplate.get())
-		return NULL;
+//CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn) {
+////    // Create new block
+//	auto_ptr<CBlockTemplate> pblocktemplate(new CBlockTemplate());
+//	if (!pblocktemplate.get())
+//		return NULL;
 //    CBlock *pblock = &pblocktemplate->block; // pointer for convenience
 //
 //    // Create coinbase tx
@@ -289,8 +312,8 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn) {
 //            throw runtime_error("CreateNewBlock() : ConnectBlock failed");
 //    }
 
-	return pblocktemplate.release();
-}
+//	return pblocktemplate.release();
+//}
 
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& nExtraNonce) {
 	// Update nExtraNonce
@@ -388,19 +411,19 @@ unsigned int static ScanHash_CryptoPP(char* pmidstate, char* pdata, char* phash1
 	}
 }
 
-CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey) {
-	CPubKey pubkey;
-	if (!reservekey.GetReservedKey(pubkey))
-		return NULL;
+//CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey) {
+//	CPubKey pubkey;
+//	if (!reservekey.GetReservedKey(pubkey))
+//		return NULL;
+//
+//	CScript scriptPubKey = CScript() << pubkey << OP_CHECKSIG;
+//	return CreateNewBlock(scriptPubKey);
+//}
 
-	CScript scriptPubKey = CScript() << pubkey << OP_CHECKSIG;
-	return CreateNewBlock(scriptPubKey);
-}
-
-struct CSecureAccComparator {
-	bool operator()(const CSecureAccount &a, const CSecureAccount&b) {
+struct CAccountComparator {
+	bool operator()(const CAccount &a, const CAccount&b) {
 		// First sort by acc over 30days
-		if (a.GetSecureAccPos(chainActive.Tip()->nHeight) < b.GetSecureAccPos(chainActive.Tip()->nHeight)) {
+		if (a.GetAccountPos(chainActive.Tip()->nHeight) < b.GetAccountPos(chainActive.Tip()->nHeight)) {
 			return false;
 		}
 
@@ -436,7 +459,7 @@ uint256 GetAdjustHash(const uint256 TargetHash, const uint64_t nPos) {
 	posacc = posacc / 100;
 	posacc = max(posacc, (uint64_t) 1);
 	uint256 adjusthash = TargetHash; //adjust nbits
-	uint256 minhash = Params().ProofOfWorkLimit().getuint256();
+	uint256 minhash = SysCfg().ProofOfWorkLimit().getuint256();
 
 	while (posacc) {
 		adjusthash = adjusthash << 1;
@@ -452,12 +475,12 @@ uint256 GetAdjustHash(const uint256 TargetHash, const uint64_t nPos) {
 extern CWallet* pwalletMain;
 bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCreateKey) {
 	set<CKeyID> setKeyID;
-	CSecureAccount secureAcc;
-	set<CSecureAccount, CSecureAccComparator> setSecureAcc;
+	CAccount acctInfo;
+	set<CAccount, CAccountComparator> setAcctInfo;
 
 	{
 		LOCK2(cs_main, pwalletMain->cs_wallet);
-		pwalletMain->GetKeys(setKeyID); //get addrs
+		pwalletMain->GetKeyIds(setKeyID); //get addrs
 		if (setKeyID.empty()) {
 			LogPrint("INFO","CreatePosTx setKeyID empty\n");
 			return false;
@@ -465,25 +488,29 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 
 		CAccountViewCache accView(*pAccountViewTip, true);
 		CTransactionCache txCacheTemp(*pTxCacheTip);
-		CContractScriptCache contractScriptTemp(*pContractScriptTip);
+		CScriptDBViewCache contractScriptTemp(*pScriptDBTip);
 		{
 			for (unsigned int i = 1; i < pBlock->vptx.size(); i++) {
 				shared_ptr<CBaseTransaction> pBaseTx = pBlock->vptx[i];
 				if (pTxCacheTip->IsContainTx(pBaseTx->GetHash())) {
 					LogPrint("INFO","CreatePosTx duplicate tx\n");
+					mempool.mapTx.erase(pBaseTx->GetHash());
 					return false;
 				}
 				CTxUndo txundo;
 				CValidationState state;
+
 				if (!pBaseTx->UpdateAccount(i, accView, state, txundo, pPrevIndex->nHeight + 1, txCacheTemp, contractScriptTemp)) {
-					LogPrint("INFO","CreatePosTx duplicate tx\n");
+					LogPrint("INFO","tx hash:%s transaction is invalid\n", pBaseTx->GetHash().GetHex());
+
+					mempool.mapTx.erase(pBaseTx->GetHash());
 					return false;
 				}
 			}
 		}
 
 		for(const auto &keyid:setKeyID) {
-			//find CSecureAccount info by keyid
+			//find CAccount info by keyid
 			if(setCreateKey.size()) {
 				bool bfind = false;
 				for(auto &item: setCreateKey)
@@ -496,29 +523,30 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 				}
 				if(!bfind) continue;
 			}
-			if (accView.GetAccount(keyid, secureAcc)) {
+			CUserID userId = keyid;
+			if (accView.GetAccount(userId, acctInfo)) {
 				//available
-				if (secureAcc.IsRegister() && secureAcc.GetSecureAccPos(pPrevIndex->nHeight) > 0) {
-					setSecureAcc.insert(secureAcc);
+				if (acctInfo.IsRegister() && acctInfo.GetAccountPos(pPrevIndex->nHeight) > 0) {
+					setAcctInfo.insert(acctInfo);
 				}
 			}
 		}
 	}
 
-	if (setSecureAcc.empty()) {
+	if (setAcctInfo.empty()) {
 		setCreateKey.clear();
 		LogPrint("INFO","CreatePosTx setSecureAcc empty\n");
 		return false;
 	}
 
-	uint64_t maxNonce = CBaseParams::GetArg("-blockmaxnonce", 10000); //cacul times
+	uint64_t maxNonce = SysCfg().GetArg("-blockmaxnonce", 10000); //cacul times
 
 	uint256 prevblockhash = pPrevIndex->GetBlockHash();
 	const uint256 targetHash = CBigNum().SetCompact(pBlock->nBits).getuint256(); //target hash difficult
 
-	for(const auto &item: setSecureAcc) {
+	for(const auto &item: setAcctInfo) {
 
-		uint64_t posacc = item.GetSecureAccPos(pPrevIndex->nHeight);
+		uint64_t posacc = item.GetAccountPos(pPrevIndex->nHeight);
 		if (posacc == 0) //have no pos
 				{
 			LogPrint("INFO","CreatePosTx posacc zero\n");
@@ -569,17 +597,18 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 //					str += strprintf("%02X", *(unsigned char*)pCh);
 //				}
 //				LogPrint("Hash", "nNonce:%s\n", str.c_str());
-				printf("curhash smaller then adjusthash\r\n");
+//				printf("curhash smaller then adjusthash\r\n");
 				CRegID regid;
 				CKey key;
-				if (pwalletMain->GetKey(item.keyID, key) && pwalletMain->GetRegID(item.keyID, regid)) {
+
+				if (pwalletMain->GetKey(item.keyID, key,true) && pAccountViewTip->GetRegId(item.keyID, regid)) {
 					CRewardTransaction *prtx = (CRewardTransaction *) pBlock->vptx[0].get();
 					prtx->rewardValue += item.GetInterest();
-					prtx->account = regid.vRegID;
+					prtx->account = regid;
 					prtx->nHeight = pPrevIndex->nHeight+1;
 					pBlock->hashMerkleRoot = pBlock->BuildMerkleTree();
-
-					printf("CreatePosTx addr = %s\r\n",CBitcoinAddress(item.keyID).ToString().c_str());
+					vector<unsigned char> vRegId = regid.GetVec6();
+					printf("CreatePosTx addr = %s time:%s\r\n",item.keyID.ToAddress().c_str(),DateTimeStrFormat("%Y-%m-%dT%H:%M:%SZ", GetTime()).c_str());
 					LogPrint("postx", "find pos tx hash succeed: \n"
 									  "   pos hash:%s \n"
 									  "adjust hash:%s \r\n", curhash.GetHex(), adjusthash.GetHex());
@@ -587,13 +616,21 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 							"nVersion=%d, hashPreBlock=%s, hashMerkleRoot=%s, nValue=%ld, nTime=%ld, nNonce=%ld\n",
 							postxinfo.nVersion, postxinfo.hashPrevBlock.GetHex(), postxinfo.hashMerkleRoot.GetHex(),
 							postxinfo.nValues, postxinfo.nTime, postxinfo.nNonce);
+//					cout << "miner block hash:" << pBlock->SignatureHash().GetHex() << endl;
+//					cout << "miner regId :" << regid.ToString() << endl;
+					CPubKey tep = key.GetPubKey();
+					assert(tep == item.PublicKey);
+//					cout << "miner keyid's pubkey:" << HexStr(tep.begin(),tep.end()) << endl;
+//					cout << "miner item's accont:" << item.ToString() << endl;
+
 					if (key.Sign(pBlock->SignatureHash(), pBlock->vSignature)) {
+//						cout << "miner signature:" << HexStr(pBlock->vSignature) << endl;
 						return true;
 					} else {
-						LogPrint("postx", "sign fail\r\n");
+						LogPrint("ERROR", "sign fail\r\n");
 					}
 				} else {
-					LogPrint("postx", "GetKey fail or GetRegID fail\r\n");
+					LogPrint("ERROR", "GetKey fail or GetVec6 fail\r\n");
 				}
 			}
 		}
@@ -602,21 +639,22 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 	return false;
 }
 
-bool VerifyPosTx(const CBlockIndex *pPrevIndex, CAccountViewCache &accView, const CBlock *pBlock, uint64_t &nInterest, CTransactionCache &txCache, CContractScriptCache &scriptCache, bool bJustCheckSign) {
+bool VerifyPosTx(const CBlockIndex *pPrevIndex, CAccountViewCache &accView, const CBlock *pBlock, uint64_t &nInterest, CTransactionCache &txCache, CScriptDBViewCache &scriptCache, bool bJustCheckSign) {
 
-	uint64_t maxNonce = CBaseParams::GetArg("-blockmaxnonce", 10000); //cacul times
+	uint64_t maxNonce = SysCfg().GetArg("-blockmaxnonce", 10000); //cacul times
 
 	if (pBlock->nNonce > maxNonce) {
-		LogPrint("postx", "Nonce is larger than maxNonce\r\n");
+		LogPrint("ERROR", "Nonce is larger than maxNonce\r\n");
 		return false;
 	}
 
 	if (pBlock->hashMerkleRoot != pBlock->BuildMerkleTree()) {
-		LogPrint("postx", "hashMerkleRoot is error\r\n");
+		LogPrint("ERROR", "hashMerkleRoot is error\r\n");
 		return false;
 	}
 	CAccountViewCache view(accView);
-	CSecureAccount secureAcc;
+	CScriptDBViewCache scriptDBView(scriptCache);
+	CAccount account;
 	{
 		CRewardTransaction *prtx = (CRewardTransaction *) pBlock->vptx[0].get();
 
@@ -624,31 +662,41 @@ bool VerifyPosTx(const CBlockIndex *pPrevIndex, CAccountViewCache &accView, cons
 			for (unsigned int i = 1; i < pBlock->vptx.size(); i++) {
 				shared_ptr<CBaseTransaction> pBaseTx = pBlock->vptx[i];
 				if (pTxCacheTip->IsContainTx(pBaseTx->GetHash())) {
-					LogPrint("INFO","VerifyPosTx duplicate tx\n");
+					LogPrint("ERROR","VerifyPosTx duplicate tx\n");
 					return false;
 				}
 				CTxUndo txundo;
 				CValidationState state;
 
-				if (!pBaseTx->UpdateAccount(i, view, state, txundo, pPrevIndex->nHeight + 1, txCache, scriptCache)) {
-					LogPrint("INFO","transaction UpdateAccount account error\n");
+				if (!pBaseTx->UpdateAccount(i, view, state, txundo, pPrevIndex->nHeight + 1, txCache, scriptDBView)) {
+					LogPrint("ERROR","transaction UpdateAccount account error\n");
 					return false;
 				}
 			}
 		}
 
-		if (view.GetAccount(prtx->account, secureAcc)) {
+		if (view.GetAccount(prtx->account, account)) {
 			//available acc
-			if (!secureAcc.publicKey.Verify(pBlock->SignatureHash(), pBlock->vSignature)) {
-//				LogPrint("postx", "publickey:%s, keyid:%s\n", secureAcc.publicKey.GetHash().GetHex(), secureAcc.keyID.GetHex());
-//				LogPrint("postx", "block verify fail\r\n");
-//				LogPrint("postx", "block hash:%s\n", pBlock->GetHash().GetHex());
-//				LogPrint("postx", "signature block:%s\n", HexStr(pBlock->vSignature.begin(), pBlock->vSignature.end()));
-				return false;
+//			cout << "check block hash:" << pBlock->SignatureHash().GetHex() << endl;
+//			cout << "check signature:" << HexStr(pBlock->vSignature) << endl;
+//			cout << "check secureAcc " << secureAcc.ToString() << endl;
+//			cout << "miner regId :" << secureAcc.regID.ToString() << endl;
+
+			if (!account.PublicKey.Verify(pBlock->SignatureHash(), pBlock->vSignature)) {
+				if (!account.MinerPKey.Verify(pBlock->SignatureHash(), pBlock->vSignature)) {
+//					LogPrint("postx", "publickey:%s, keyid:%s\n", secureAcc.PublicKey.GetHash().GetHex(),
+	//						secureAcc.keyID.GetHex());
+//					LogPrint("postx", "block verify fail\r\n");
+//					LogPrint("postx", "block hash:%s\n", pBlock->GetHash().GetHex());
+//					LogPrint("postx", "signature block:%s\n",
+//							HexStr(pBlock->vSignature.begin(), pBlock->vSignature.end()));
+				LogPrint("ERROR", "Verify signature error");
+					return false;
+				}
 			}
 
 		} else {
-			LogPrint("postx", "AccountView have no the accountid\r\n");
+			LogPrint("ERROR", "AccountView have no the accountid\r\n");
 			return false;
 		}
 	}
@@ -656,13 +704,13 @@ bool VerifyPosTx(const CBlockIndex *pPrevIndex, CAccountViewCache &accView, cons
 	if (bJustCheckSign)
 		return true;
 
-	nInterest = secureAcc.GetInterest();
+	nInterest = account.GetInterest();
 	uint256 prevblockhash = pPrevIndex->GetBlockHash();
 	const uint256 targetHash = CBigNum().SetCompact(pBlock->nBits).getuint256(); //target hash difficult
 
-	uint64_t posacc = secureAcc.GetSecureAccPos(pPrevIndex->nHeight);
+	uint64_t posacc = account.GetAccountPos(pPrevIndex->nHeight);
 	if (posacc == 0) {
-		LogPrint("postx", "Account have no pos\r\n");
+		LogPrint("ERROR", "Account have no pos\r\n");
 		return false;
 	}
 
@@ -672,8 +720,8 @@ bool VerifyPosTx(const CBlockIndex *pPrevIndex, CAccountViewCache &accView, cons
 	struct PosTxInfo postxinfo;
 	postxinfo.nVersion = pPrevIndex->nVersion;
 	postxinfo.hashPrevBlock = prevblockhash;
-	postxinfo.hashMerkleRoot = secureAcc.BuildMerkleTree(pPrevIndex->nHeight);
-	postxinfo.nValues = secureAcc.llValues;
+	postxinfo.hashMerkleRoot = account.BuildMerkleTree(pPrevIndex->nHeight);
+	postxinfo.nValues = account.llValues;
 	postxinfo.nTime = pBlock->nTime;
 	postxinfo.nNonce = pBlock->nNonce;
 	uint256 curhash = postxinfo.GetHash();
@@ -711,11 +759,11 @@ bool VerifyPosTx(const CBlockIndex *pPrevIndex, CAccountViewCache &accView, cons
 //	}
 //	LogPrint("Hash", "nNonce:%s\n", str.c_str());
 
-	LogPrint("postx", "nVersion=%d, hashPreBlock=%s, hashMerkleRoot=%s, nValue=%ld, nTime=%ld, nNonce=%ld\n",
+	LogPrint("INFO", "nVersion=%d, hashPreBlock=%s, hashMerkleRoot=%s, nValue=%ld, nTime=%ld, nNonce=%ld, blockHash=%s\n",
 			postxinfo.nVersion, postxinfo.hashPrevBlock.GetHex(), postxinfo.hashMerkleRoot.GetHex(), postxinfo.nValues,
-			postxinfo.nTime, postxinfo.nNonce);
+			postxinfo.nTime, postxinfo.nNonce, pBlock->GetHash().GetHex());
 	if (curhash > adjusthash) {
-		LogPrint("postx", "Account ProofOfWorkLimit error: \n"
+		LogPrint("INFO", "Account ProofOfWorkLimit error: \n"
 				           "   pos hash:%s \n"
 				           "adjust hash:%s\r\n", curhash.GetHex(), adjusthash.GetHex());
 		return false;
@@ -740,18 +788,18 @@ CBlockTemplate* CreateNewBlock() {
 	pblocktemplate->vTxSigOps.push_back(-1); // updated at end
 
 	// Largest block you're willing to create:
-	unsigned int nBlockMaxSize = GetArg("-blockmaxsize", DEFAULT_BLOCK_MAX_SIZE);
+	unsigned int nBlockMaxSize = SysCfg().GetArg("-blockmaxsize", DEFAULT_BLOCK_MAX_SIZE);
 	// Limit to betweeen 1K and MAX_BLOCK_SIZE-1K for sanity:
 	nBlockMaxSize = max((unsigned int) 1000, min((unsigned int) (MAX_BLOCK_SIZE - 1000), nBlockMaxSize));
 
 	// How much of the block should be dedicated to high-priority transactions,
 	// included regardless of the fees they pay
-	unsigned int nBlockPrioritySize = GetArg("-blockprioritysize", DEFAULT_BLOCK_PRIORITY_SIZE);
+	unsigned int nBlockPrioritySize = SysCfg().GetArg("-blockprioritysize", DEFAULT_BLOCK_PRIORITY_SIZE);
 	nBlockPrioritySize = min(nBlockMaxSize, nBlockPrioritySize);
 
 	// Minimum block size you want to create; block will be filled with free transactions
 	// until there are no more or the block reaches this size:
-	unsigned int nBlockMinSize = GetArg("-blockminsize", DEFAULT_BLOCK_MIN_SIZE);
+	unsigned int nBlockMinSize = SysCfg().GetArg("-blockminsize", DEFAULT_BLOCK_MIN_SIZE);
 	nBlockMinSize = min(nBlockMaxSize, nBlockMinSize);
 
 	// Collect memory pool transactions into the block
@@ -761,7 +809,7 @@ CBlockTemplate* CreateNewBlock() {
 		CBlockIndex* pIndexPrev = chainActive.Tip();
 		CAccountViewCache accview(*pAccountViewTip, true);
 
-		bool fPrintPriority = GetBoolArg("-printpriority", false);
+		bool fPrintPriority = SysCfg().GetBoolArg("-printpriority", false);
 
 		// This vector will be sorted into a priority queue:
 		vector<TxPriority> vecPriority;
@@ -776,6 +824,9 @@ CBlockTemplate* CreateNewBlock() {
 
 		TxPriorityCompare comparer(fSortedByFee);
 		make_heap(vecPriority.begin(), vecPriority.end(), comparer);
+		CAccountViewCache accviewtemp(accview);
+		CTransactionCache txCacheTemp(*pTxCacheTip);
+		CScriptDBViewCache contractScriptTemp(*pScriptDBTip);
 
 		while (!vecPriority.empty()) {
 			// Take highest priority transaction off the priority queue:
@@ -804,12 +855,13 @@ CBlockTemplate* CreateNewBlock() {
 				comparer = TxPriorityCompare(fSortedByFee);
 				make_heap(vecPriority.begin(), vecPriority.end(), comparer);
 			}
+			if(txCacheTemp.IsContainTx(pBaseTx->GetHash())) {
+				LogPrint("INFO","CreatePosTx duplicate tx\n");
+				continue;
+			}
 
 			CTxUndo txundo;
 			CValidationState state;
-			CAccountViewCache accviewtemp(accview);
-			CTransactionCache txCacheTemp(*pTxCacheTip);
-			CContractScriptCache contractScriptTemp(*pContractScriptTip);
 			if (!pBaseTx->UpdateAccount(nBlockTx + 1, accviewtemp, state, txundo, pIndexPrev->nHeight + 1, txCacheTemp, contractScriptTemp)) {
 				continue;
 			}
@@ -860,10 +912,10 @@ bool CheckWork(CBlock* pblock, CWallet& wallet) {
 	//	reservekey.KeepKey();
 
 		// Track how many getdata requests this block gets
-		{
-			LOCK(wallet.cs_wallet);
-			wallet.mapRequestCount[pblock->GetHash()] = 0;
-		}
+//		{
+//			LOCK(wallet.cs_wallet);
+//			wallet.mapRequestCount[pblock->GetHash()] = 0;
+//		}
 
 		// Process this block the same as if we had received it from another node
 		CValidationState state;
@@ -874,17 +926,17 @@ bool CheckWork(CBlock* pblock, CWallet& wallet) {
 	return true;
 }
 
-void static BitcoinMiner(CWallet *pwallet) {
-	LogPrint("INFO","BitcoinMiner started\n");
+void static SoypayMiner(CWallet *pwallet) {
+	LogPrint("INFO","Miner started\n");
 	SetThreadPriority(THREAD_PRIORITY_LOWEST);
-	RenameThread("bitcoin-miner");
+	RenameThread("soypay-miner");
 
 	// Each thread has its own key and counter
 	unsigned int nExtraNonce = 0;
 
 	try {
 		while (true) {
-			if (Params().NetworkID() != CBaseParams::REGTEST) {
+			if (SysCfg().NetworkID() != CBaseParams::REGTEST) {
 				// Busy-wait for the network to come online so we don't waste time mining
 				// on an obsolete chain. In regtest mode we expect to fly solo.
 				while (vNodes.empty())
@@ -914,16 +966,18 @@ void static BitcoinMiner(CWallet *pwallet) {
 					CheckWork(pblock, *pwallet);
 					SetThreadPriority(THREAD_PRIORITY_LOWEST);
 
-					if (Params().NetworkID() == CBaseParams::REGTEST)
+					if (SysCfg().NetworkID() == CBaseParams::REGTEST)
 						throw boost::thread_interrupted();
 					::MilliSleep(800);
 					break;
 				}
+				else
+					break;
 				::MilliSleep(800);
 
 				// Check for stop or if block needs to be rebuilt
 				boost::this_thread::interruption_point();
-				if (vNodes.empty() && Params().NetworkID() != CBaseParams::REGTEST)
+				if (vNodes.empty() && SysCfg().NetworkID() != CBaseParams::REGTEST)
 					break;
 				if (mempool.GetTransactionsUpdated() != nTransactionsUpdatedLast && GetTime() - nStart > 60)
 					break;
@@ -937,9 +991,9 @@ void static BitcoinMiner(CWallet *pwallet) {
 	}
 }
 
-bool CreateBlockWithAppointedAddr(CKeyID &keyID)
+uint256 CreateBlockWithAppointedAddr(CKeyID const &keyID)
 {
-	if (Params().NetworkID() == CBaseParams::REGTEST)
+	if (SysCfg().NetworkID() == CBaseParams::REGTEST)
 	{
 		unsigned int nTransactionsUpdatedLast = mempool.GetTransactionsUpdated();
 		CBlockIndex* pindexPrev = chainActive.Tip();
@@ -961,24 +1015,24 @@ bool CreateBlockWithAppointedAddr(CKeyID &keyID)
 			}
 			if(setCreateKey.empty())
 			{
-				LogPrint("postx", "%s is not exist in the wallet\r\n",CBitcoinAddress(keyID).ToString().c_str());
+				LogPrint("postx", "%s is not exist in the wallet\r\n",CSoyPayAddress(keyID).ToString().c_str());
 				break;
 			}
 			::MilliSleep(1);
 			if (pindexPrev != chainActive.Tip())
 			{
-				return true;
+				return chainActive.Tip()->GetBlockHash() ;
 			}
 		}
 	}
-	return false;
+	return uint256(0);
 }
 
 void GenerateBitcoins(bool fGenerate, CWallet* pwallet, int nThreads) {
 	static boost::thread_group* minerThreads = NULL;
 
 	if (nThreads < 0) {
-		if (Params().NetworkID() == CBaseParams::REGTEST)
+		if (SysCfg().NetworkID() == CBaseParams::REGTEST)
 			nThreads = 1;
 		else
 			nThreads = boost::thread::hardware_concurrency();
@@ -995,7 +1049,8 @@ void GenerateBitcoins(bool fGenerate, CWallet* pwallet, int nThreads) {
 
 	minerThreads = new boost::thread_group();
 	for (int i = 0; i < nThreads; i++)
-		minerThreads->create_thread(boost::bind(&BitcoinMiner, pwallet));
+		minerThreads->create_thread(boost::bind(&SoypayMiner, pwallet));
+	minerThreads->join_all();
 }
 
 #endif

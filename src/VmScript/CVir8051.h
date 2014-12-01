@@ -4,6 +4,11 @@
 
 #if !defined(AFX_CVir8051COMDIRVER_H__97382C29_90C6_4E40_9581_6474D5D71406__INCLUDED_)
 #define AFX_CVir8051COMDIRVER_H__97382C29_90C6_4E40_9581_6474D5D71406__INCLUDED_
+
+#include <cstdio>
+
+class CVmScriptRun;
+
 typedef unsigned char INT8U;
 typedef unsigned short INT16U;
 
@@ -41,6 +46,7 @@ typedef unsigned short INT16U;
 #include <string>
 #include <memory>
 using namespace std;
+class CVmScriptRun;
 class CVir8051;
 class CUPSfr;
 typedef struct tagpsw PSW;
@@ -80,7 +86,7 @@ typedef CUPReg<INT16U> CUPReg_16;
 
 class CUPSfr: public CUPReg<INT8U> {
 public:
-	CUPSfr(CVir8051 *mcu) :
+	explicit CUPSfr(CVir8051 *mcu) :
 			CUPReg<INT8U>(mcu) {
 	}
 	virtual ~CUPSfr() {
@@ -97,7 +103,7 @@ public:
 };
 class CUPReg_a: public CUPReg<INT8U> {
 public:
-	CUPReg_a(CVir8051 *mcu) :
+	explicit CUPReg_a(CVir8051 *mcu) :
 			CUPReg<INT8U>(mcu) {
 	}
 	virtual ~CUPReg_a() {
@@ -143,8 +149,13 @@ public:
 	INT8U getValue() {
 		return GetRegRe();
 	}
-	CUPPSW_8(CVir8051 *mcu) :
+	explicit CUPPSW_8(CVir8051 *mcu) :
 			CUPSfr(mcu) {
+	}
+	template<class T>
+	INT8U operator=(T data) {
+		INT8U tep = (GetRegRe() = data);
+		return tep;
 	}
 	PSW& operator()(void); // {return *((PSW*)&(CUPReg_8::GetRegRe()))};
 };
@@ -174,7 +185,7 @@ public:
 
 class CSys {
 public:
-	CSys(CVir8051 *mcu) :
+	explicit CSys(CVir8051 *mcu) :
 			a(mcu), b(mcu), sp(mcu), psw(mcu), dptr(mcu), PC(0) {
 	}
 	CUPReg_a a;
@@ -223,6 +234,9 @@ class CVir8051 {
 	static const int MAX_ROM = 0xFFFF;
 	static const int MAX_EX_RAM = 0xFFFF;
 	static const int MAX_IN_RAM = 0xff;
+	static const int MAX_SHARE_RAM = 4*1024;
+	static const int VM_SHARE_ADDR = 0xEFFF;
+	static const int VM_FUN_CALL_ADDR = 0xEFFD;
 
 
 public:
@@ -236,7 +250,7 @@ public:
 	INT8U SetRamData(INT8U addr, INT8U data);
 	~CVir8051();
 	bool run();
-	int run(int maxstep);
+	int64_t run(uint64_t maxstep,CVmScriptRun *pVmScriptRun);
 	void StepRun(INT8U code);
 
 	INT8U GetOpcode(void) const;

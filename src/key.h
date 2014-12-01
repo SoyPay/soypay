@@ -10,20 +10,13 @@
 #define READDATA(s, obj)    s.read((char*)&(obj), sizeof(obj))
 
 #include "allocators.h"
-//#include "hash.h"
-//#include "serialize.h"
+
 #include "uint256.h"
 
 #include <stdexcept>
 #include <vector>
-
-// secp256k1:
-// const unsigned int PRIVATE_KEY_SIZE = 279;
-// const unsigned int PUBLIC_KEY_SIZE  = 65;
-// const unsigned int SIGNATURE_SIZE   = 72;
-//
-// see www.keylength.com
-// script supports up to 75 for single byte push
+#include "util.h"
+#include <boost/variant.hpp>
 
 /** A reference to a CKey: the Hash160 of its serialized public key */
 class CKeyID: public uint160 {
@@ -34,6 +27,12 @@ public:
 	CKeyID(const uint160 &in) :
 			uint160(in) {
 	}
+	string ToString() const
+	{
+		return HexStr(begin(),end());
+	}
+	string ToAddress() const;
+
 };
 
 /** A reference to a CScript: the Hash160 of its serialization (see script.h) */
@@ -47,22 +46,7 @@ public:
 	}
 };
 
-typedef base_uint<224> base_uint224;
-class CAccountID: public base_uint224 {
-public:
-	CAccountID(CKeyID keyid, vector<unsigned char> &vRegid) {
-		unsigned char buf[32] = { 0 };
-		vRegid.resize(6);
-		memcpy(buf, keyid.begin(), keyid.size());
-		memcpy(&buf[keyid.size()], &vRegid[0], 6);
-		memcpy(begin(), buf, size());
-	}
-	;
-	CAccountID() {
-		for (int i = 0; i < WIDTH; i++)
-			pn[i] = 0;
-	}
-};
+
 
 /** An encapsulated public key. */
 class CPubKey {
@@ -75,8 +59,9 @@ private:
 	unsigned int static GetLen(unsigned char chHeader) {
 		if (chHeader == 2 || chHeader == 3)
 			return 33;
-		if (chHeader == 4 || chHeader == 6 || chHeader == 7)
-			return 65;
+//		assert(0); //only sorpurt 33
+//		if (chHeader == 4 || chHeader == 6 || chHeader == 7)
+//			return 65;
 		return 0;
 	}
 
@@ -86,6 +71,9 @@ private:
 	}
 
 public:
+	string ToString() const;
+
+
 	// Construct an invalid public key.
 	CPubKey() {
 		Invalidate();
@@ -114,7 +102,10 @@ public:
 
 	// Simple read-only vector-like interface to the pubkey data.
 	unsigned int size() const {
-		return GetLen(vch[0]);
+		unsigned int len = GetLen(vch[0]);
+		 if(len != 33) //only use 33 for soypay sys
+			 return 0;
+		return len;
 	}
 	const unsigned char *begin() const {
 		return vch;
@@ -207,16 +198,13 @@ public:
 		if (len <= 65) {
 			s.read((char*) vch, len);
 		} else {
-			// invalid pubkey, skip available data
-			char dummy;
-			while (len--)
-				s.read(&dummy, 1);
+	         assert(0); //never come here
 			Invalidate();
 		}
 	}
 
 	// Get the KeyID of this public key (hash of its serialization)
-	CKeyID GetID() const;
+	CKeyID GetKeyID() const;
 
 	// Get the 256-bit hash of this public key.
 	uint256 GetHash() const;
@@ -224,7 +212,8 @@ public:
 	//
 	// Note that this is consensus critical as CheckSig() calls it!
 	bool IsValid() const {
-		return size() > 0;
+//		return size() > 0;
+		return size() == 33;//force use Compressed key
 	}
 
 	// fully validate whether this is a valid public key (more expensive than IsValid())
@@ -274,10 +263,34 @@ private:
 	bool static Check(const unsigned char *vch);
 public:
 
+	IMPLEMENT_SERIALIZE
+	(
+			int len = 0;
+			while(len < sizeof(vch))
+			{
+				READWRITE(vch[len++]);
+			}
+			READWRITE(fCompressed);
+			READWRITE(fValid);
+	)
+
+   string ToString()
+	{
+		if(fValid)
+		return HexStr(begin(),end());
+		return " ";
+	}
+
 	// Construct an invalid private key.
 	CKey() :
 			fValid(false) {
 		LockObject(vch);
+		fCompressed = false;
+	}
+	bool Clear()
+	{
+		fValid = false;
+		memset(vch,0,sizeof(vch));
 	}
 
 	// Copy constructor. This is necessary because of memlocking.
@@ -337,7 +350,7 @@ public:
 	bool SetPrivKey(const CPrivKey &vchPrivKey, bool fCompressed);
 
 	// Generate a new private key using a cryptographic PRNG.
-	void MakeNewKey(bool fCompressed);
+	void MakeNewKey(bool fCompressed = true);
 
 	// Convert the private key to a CPrivKey (serialized OpenSSL private key data).
 	// This is expensive.
@@ -400,5 +413,24 @@ struct CExtKey {
 	CExtPubKey Neuter() const;
 	void SetMaster(const unsigned char *seed, unsigned int nSeedLen);
 };
+
+class CNoDestination {
+public:
+    friend bool operator==(const CNoDestination &a, const CNoDestination &b) { return true; }
+    friend bool operator<(const CNoDestination &a, const CNoDestination &b) { return true; }
+};
+
+/** A txout script template with a specific destination. It is either:
+ *  * CNoDestination: no destination set
+ *  * CKeyID: TX_PUBKEYHASH destination
+ *  * CScriptID: TX_SCRIPTHASH destination
+ *  A CTxDestination is the internal data type encoded in a CSoyPayAddress
+ */
+typedef boost::variant<CNoDestination, CKeyID> CTxDestination;
+
+
+
+
+
 
 #endif

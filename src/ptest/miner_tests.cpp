@@ -204,6 +204,24 @@ public:
 		return false;
 	}
 
+	bool GetOneScriptId(std::string &regscriptid)
+	{
+		//CommanRpc
+		char *argv[] = {"rpctest", "listscriptregid"};
+		int argc = sizeof(argv)/sizeof(char*);
+
+		Value value;
+		int ret = CommandLineRPC_GetValue(argc,argv,value);
+		if(!ret)
+		{
+			Object &Oid = value.get_obj();
+			regscriptid = Oid[0].value_.get_str();
+			LogPrint("test_miners","GetOneAddr:%s\r\n",regscriptid.c_str());
+			return true;
+		}
+		return false;
+	}
+
 	bool GetNewAddr(std::string &addr)
 	{
 		//CommanRpc
@@ -229,7 +247,6 @@ public:
 
 		char *argv[] = {"rpctest", "getaddramount",temp};
 		int argc = sizeof(argv)/sizeof(char*);
-
 		Value value;
 		int ret = CommandLineRPC_GetValue(argc, argv, value);
 		if (!ret)
@@ -241,8 +258,8 @@ public:
 			accstate.dFreeMoney = roundint64(dfree*COIN);
 			accstate.dUnmatureMoney = roundint64(dmature*COIN);
 			accstate.dFrozenMoney = roundint64(dfrozen*COIN);
-			LogPrint("test_miners","GetAccState FreeMoney:%0.8lf matureMoney:%0.8lf FrozenMoney:%0.8lf\r\n",
-					dfree,dmature,dfrozen);
+			LogPrint("test_miners","addr:%s GetAccState FreeMoney:%0.8lf matureMoney:%0.8lf FrozenMoney:%0.8lf\r\n",
+					addr.c_str(), dfree, dmature, dfrozen);
 			return true;
 		}
 		return false;
@@ -337,7 +354,7 @@ public:
 		return false;
 	}
 
-	bool RegisterSecureTx(const std::string &addr,const int nHeight)
+	bool RegisterAccountTx(const std::string &addr,const int nHeight)
 	{
 		//CommanRpc
 		char caddr[64] = { 0 };
@@ -352,7 +369,7 @@ public:
 		sprintf(height,"%d",nHeight);
 
 
-		char *argv[] = { "rpctest", "registersecuretx", caddr,fee,height};
+		char *argv[] = { "rpctest", "registeraccounttx", caddr, fee, height};
 		int argc = sizeof(argv)/sizeof(char*);
 
 		Value value;
@@ -365,7 +382,41 @@ public:
 		return false;
 	}
 
-	bool RegisterScriptTx(const std::string &addr,const std::string &script,const int nHeight)
+	bool CreateContractTx(const std::string &scriptid, const std::string &addrs, const std::string &contract, const int nHeight)
+	{
+		char cscriptid[1024] = { 0 };
+//		vector<char> te(scriptid.begin(),scriptid.end());
+//		&te[0]
+//		strncpy(cscriptid, scriptid.c_str(), sizeof(scriptid)-1);
+
+//		char caddr[1024] = { 0 };
+//		strncpy(caddr, addrs.c_str(), sizeof(addrs)-1);
+
+//		char ccontract[128*1024] = { 0 };
+//		strncpy(ccontract, contract.c_str(), sizeof(contract)-1);
+
+		char fee[64] = { 0 };
+		int nfee = GetRandomFee();
+		sprintf(fee, "%d", nfee);
+		nCurFee = nfee;
+
+		char height[16] = {0};
+		sprintf(height,"%d",nHeight);
+
+		 char *argv[] = { "rpctest", "createcontracttx", (char *)(scriptid.c_str()), (char *)(addrs.c_str()), (char *)(contract.c_str()), fee, height};
+		int argc = sizeof(argv)/sizeof(char*);
+
+		Value value;
+		int ret = CommandLineRPC_GetValue(argc, argv, value);
+		if (!ret)
+		{
+			LogPrint("test_miners","createcontracttx:%s\r\n",value.get_str().c_str());
+			return true;
+		}
+		return false;
+	}
+
+	bool RegisterScriptTx(const std::string &addr, const std::string &script, const int nHeight)
 	{
 		//CommanRpc
 		char caddr[64] = { 0 };
@@ -383,7 +434,7 @@ public:
 		sprintf(height,"%d",nHeight);
 
 
-		char *argv[] = { "rpctest", "registerscripttx", caddr,csript,fee,height};
+		char *argv[] = { "rpctest", "registerscripttx", caddr, csript, fee, height};
 		int argc = sizeof(argv)/sizeof(char*);
 
 		Value value;
@@ -566,10 +617,11 @@ public:
 
 BOOST_FIXTURE_TEST_SUITE(miner_tests,CMinerTest)
 
-BOOST_FIXTURE_TEST_CASE(block_normaltx,CMinerTest)
+BOOST_FIXTURE_TEST_CASE(block_normaltx_and_regaccounttx,CMinerTest)
 {
 	//printf("\r\block_normaltx test start:\r\n");
 	string srcaddr;
+	string destaddr;
 	BOOST_REQUIRE(GetOneAddr(srcaddr,"1100000000000","true"));
 
 	AccState initState;
@@ -581,10 +633,11 @@ BOOST_FIXTURE_TEST_CASE(block_normaltx,CMinerTest)
 	nCurHeight = height;
 	uint64_t totalfee = 0;
 	{
-		string destaddr;
 		BOOST_REQUIRE(GetNewAddr(destaddr));
 		BOOST_REQUIRE(CreateNormalTx(srcaddr,destaddr,height));
 		totalfee += nCurFee;
+		LogPrint("test_miners","srcaddr:%s\r\ndestaddr:%s\r\nnCurFee:%I64d\r\n",
+				srcaddr.c_str(), destaddr.c_str(), nCurFee);
 		AccOperLog &operlog1 = mapAccOperLog[srcaddr];
 		AccOperLog &operlog2 = mapAccOperLog[destaddr];
 		AccState acc1(0,-(nCurMoney+nCurFee),0);
@@ -617,6 +670,143 @@ BOOST_FIXTURE_TEST_CASE(block_normaltx,CMinerTest)
 		AccState lastState;
 		BOOST_REQUIRE(GetAccState(item.first,lastState));
 		BOOST_REQUIRE(CheckAccState(item.first,lastState));
+	}
+
+	//test reg account
+	{
+		nCurHeight = height;
+		BOOST_REQUIRE(RegisterAccountTx(destaddr, height));
+		{
+			AccOperLog &operlog1 = mapAccOperLog[destaddr];
+			AccState acc1(0, -nCurFee, 0);
+			operlog1.Add(height,acc1);
+		}
+		BOOST_REQUIRE(GenerateOneBlock());
+		height++;
+
+		BOOST_REQUIRE(IsAllTxInBlock());
+		string mineraddr;
+		string blockhash;
+		BOOST_REQUIRE(GetBlockHash(height,blockhash));
+		BOOST_REQUIRE(GetBlockMinerAddr(blockhash,mineraddr));
+
+		if(mineraddr == destaddr)
+		{
+			AccState acc(nCurFee, 0, 0);
+			mapAccOperLog[mineraddr].Add(height,acc);
+		}
+		else
+		{
+			BOOST_REQUIRE(GetAccState(mineraddr,initState));
+			mapAccState[mineraddr] = initState;//insert
+		}
+
+		for(auto & item:mapAccOperLog)
+		{
+			AccState lastState;
+			BOOST_REQUIRE(GetAccState(item.first,lastState));
+			BOOST_REQUIRE(CheckAccState(item.first,lastState));
+		}
+	}
+}
+
+BOOST_FIXTURE_TEST_CASE(block_regscripttx_and_contracttx,CMinerTest)
+{
+	string srcaddr;
+	BOOST_REQUIRE(GetOneAddr(srcaddr,"1100000000000","true"));
+
+	AccState initState;
+	BOOST_REQUIRE(GetAccState(srcaddr,initState));
+	mapAccState[srcaddr] = initState;//insert
+
+	int height = 0;
+	BOOST_REQUIRE(GetBlockHeight(height));
+	nCurHeight = height;
+	//test regscripttx
+	{
+		string script = "fd3e0102001d000000000022220000000000000000222202011112013512013a75d0007581bf750900750a0f020017250910af08f509400c150a8008f5094002150ad2af222509c582c0e0e50a34ffc583c0e0e509c3958224f910af0885830a858209800885830a858209d2afcef0a3e520f0a37808e608f0a3defaeff0a3e58124fbf8e608f0a3e608f0a30808e608f0a3e608f0a315811581d0e0fed0e0f815811581e8c0e0eec0e022850a83850982e0a3fee0a3f5207808e0a3f608dffae0a3ffe0a3c0e0e0a3c0e0e0a3c0e0e0a3c0e010af0885820985830a800885820985830ad2afd083d0822274f8120042e990fbfef01200087f010200a8c082c083ea90fbfef0eba3f012001202010cd083d0822274f812004274fe12002ceafeebff850982850a83eef0a3eff0aa09ab0a790112013d80ea79010200e80200142200";
+		BOOST_REQUIRE(RegisterScriptTx(srcaddr, script, height));
+		AccOperLog &operlog1 = mapAccOperLog[srcaddr];
+		AccState acc1(0, -nCurFee, 0);
+		operlog1.Add(height,acc1);
+
+		BOOST_REQUIRE(GenerateOneBlock());
+		height++;
+
+		BOOST_REQUIRE(IsAllTxInBlock());
+		string mineraddr;
+		string blockhash;
+		BOOST_REQUIRE(GetBlockHash(height,blockhash));
+		BOOST_REQUIRE(GetBlockMinerAddr(blockhash,mineraddr));
+
+		if(mineraddr == srcaddr)
+		{
+			AccState acc(nCurFee, 0, 0);
+			mapAccOperLog[mineraddr].Add(height,acc);
+		}
+		else
+		{
+			BOOST_REQUIRE(GetAccState(mineraddr,initState));
+			mapAccState[mineraddr] = initState;//insert
+		}
+
+		for(auto & item:mapAccOperLog)
+		{
+			AccState lastState;
+			BOOST_REQUIRE(GetAccState(item.first,lastState));
+			BOOST_REQUIRE(CheckAccState(item.first,lastState));
+		}
+	}
+
+	//test contracttx
+	{
+		CRegID scriptId(height, (uint16_t)1);
+
+		string conaddr;
+		do {
+			BOOST_REQUIRE(GetOneAddr(conaddr, "1100000000000", "true"));
+		} while (conaddr == srcaddr);
+		string vconaddr = "[\"" + conaddr + "\"] ";
+
+		AccState initState;
+		BOOST_REQUIRE(GetAccState(conaddr,initState));
+		mapAccState[conaddr] = initState;//insert
+
+		string scriptid;
+		BOOST_REQUIRE(GetOneScriptId(scriptid));
+
+		BOOST_REQUIRE(CreateContractTx(scriptid, vconaddr, "010203040506070809", height));
+
+		AccOperLog &operlog1 = mapAccOperLog[conaddr];
+		AccState acc1(0, -nCurFee, 0);
+		operlog1.Add(height,acc1);
+
+		BOOST_REQUIRE(GenerateOneBlock());
+		height++;
+
+		BOOST_REQUIRE(IsAllTxInBlock());
+		string mineraddr;
+		string blockhash;
+		BOOST_REQUIRE(GetBlockHash(height,blockhash));
+		BOOST_REQUIRE(GetBlockMinerAddr(blockhash,mineraddr));
+
+		if(mineraddr == conaddr)
+		{
+			AccState acc(nCurFee, 0, 0);
+			mapAccOperLog[mineraddr].Add(height,acc);
+		}
+		else
+		{
+			BOOST_REQUIRE(GetAccState(mineraddr,initState));
+			mapAccState[mineraddr] = initState;//insert
+		}
+
+		for(auto & item:mapAccOperLog)
+		{
+			AccState lastState;
+			BOOST_REQUIRE(GetAccState(item.first,lastState));
+			BOOST_REQUIRE(CheckAccState(item.first,lastState));
+		}
 	}
 }
 
@@ -667,5 +857,7 @@ BOOST_FIXTURE_TEST_CASE(block_frozentx,CMinerTest)
 		BOOST_REQUIRE(CheckAccState(item.first,lastState));
 	}
 }
+
+
 
 BOOST_AUTO_TEST_SUITE_END()

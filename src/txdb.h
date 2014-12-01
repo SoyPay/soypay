@@ -61,20 +61,20 @@ private:
 	CAccountViewDB(const CAccountViewDB&);
 	void operator=(const CAccountViewDB&);
 public:
-	bool GetAccount(const CKeyID &keyId, CSecureAccount &secureAccount);
-	bool SetAccount(const CKeyID &keyId, const CSecureAccount &secureAccount);
-	bool SetAccount(const vector<unsigned char> &accountId, const CSecureAccount &secureAccount);
+	bool GetAccount(const CKeyID &keyId, CAccount &secureAccount);
+	bool SetAccount(const CKeyID &keyId, const CAccount &secureAccount);
+	bool SetAccount(const vector<unsigned char> &accountId, const CAccount &secureAccount);
 	bool HaveAccount(const CKeyID &keyId);
 	uint256 GetBestBlock();
 	bool SetBestBlock(const uint256 &hashBlock);
-	bool BatchWrite(const map<CKeyID, CSecureAccount> &mapAccounts, const map<string, CKeyID> &mapKeyIds, const uint256 &hashBlock);
-	bool BatchWrite(const vector<CSecureAccount> &vAccounts);
+	bool BatchWrite(const map<CKeyID, CAccount> &mapAccounts, const map<string, CKeyID> &mapKeyIds, const uint256 &hashBlock);
+	bool BatchWrite(const vector<CAccount> &vAccounts);
 	bool EraseAccount(const CKeyID &keyId);
 	bool SetKeyId(const vector<unsigned char> &accountId, const CKeyID &keyId);
 	bool GetKeyId(const vector<unsigned char> &accountId, CKeyID &keyId);
 	bool EraseKeyId(const vector<unsigned char> &accountId);
-	bool GetAccount(const vector<unsigned char> &accountId, CSecureAccount &secureAccount);
-	bool SaveAccountInfo(const vector<unsigned char> &accountId, const CKeyID &keyId, const CSecureAccount &secureAccount);
+	bool GetAccount(const vector<unsigned char> &accountId, CAccount &secureAccount);
+	bool SaveAccountInfo(const vector<unsigned char> &accountId, const CKeyID &keyId, const CAccount &secureAccount);
 };
 
 class CTransactionCacheDB: public CLevelDBWrapper {
@@ -84,30 +84,32 @@ private:
 	CTransactionCacheDB(const CTransactionCacheDB&);
 	void operator=(const CTransactionCacheDB&);
 public:
-	bool SetRelayTx(const uint256 &prevhash, const vector<uint256> &vHashTx);
-	bool GetRelayTx(const uint256 &prevhash, vector<uint256> &vHashTx);
+//	bool SetRelayTx(const uint256 &prevhash, const vector<uint256> &vHashTx);
+//	bool GetRelayTx(const uint256 &prevhash, vector<uint256> &vHashTx);
 	bool SetTxCache(const uint256 &blockHash, const vector<uint256> &hashTxSet);
 	bool GetTxCache(const uint256 &hashblock, vector<uint256> &hashTx);
-	bool LoadTransaction(map<uint256, vector<uint256> > &mapTxHashByBlockHash,
-			map<uint256, vector<uint256> > &mapTxHashCacheByPrev);
-	bool Flush(const map<uint256, vector<uint256> > &mapTxHashByBlockHash,
-			const map<uint256, vector<uint256> > &mapTxHashCacheByPrev);
+	bool LoadTransaction(map<uint256, vector<uint256> > &mapTxHashByBlockHash);
+	bool Flush(const map<uint256, vector<uint256> > &mapTxHashByBlockHash);
 };
 
-class CScriptDB: public CLevelDBWrapper {
-public:
-	CScriptDB(size_t nCacheSize, bool fMemory = false, bool fWipe = false);
+class CScriptDB: public CScriptDBView
+{
 private:
-	CScriptDB(const CTransactionCacheDB&);
-	void operator=(const CTransactionCacheDB&);
+	CLevelDBWrapper db;
 public:
-	bool SetArbitrator(const vector<unsigned char> &scriptId, const set<string> &setArbitrator);
-	bool SetScript(const vector<unsigned char> &scriptId, const vector<unsigned char> &vScript);
-	bool GetArbitrator(const vector<unsigned char> &scriptId, set<string> &setArbitrator);
-	bool GetScript(const vector<unsigned char> &scriptId, vector<unsigned char> &vScript);
-	bool GetContractScript(const vector<unsigned char> &scriptId, CContractScript &contractScript);
-	bool EraseScript(const vector<unsigned char> & scriptId);
-	bool LoadRegScript(map<string, CContractScript> &mapScriptCache);
-	bool Flush(const map<string, CContractScript> &mapScriptCache);
+	CScriptDB(size_t nCacheSize, bool fMemory=false, bool fWipe = false);
+private:
+	CScriptDB(const CScriptDB&);
+	void operator=(const CScriptDB&);
+public:
+	bool GetData(const vector<unsigned char> &vKey, vector<unsigned char> &vValue);
+	bool SetData(const vector<unsigned char> &vKey, const vector<unsigned char> &vValue);
+	bool BatchWrite(const map<vector<unsigned char>, vector<unsigned char> > &mapDatas);
+	bool EraseKey(const vector<unsigned char> &vKey);
+	bool HaveData(const vector<unsigned char> &vKey);
+	bool GetScript(const int &nIndex, vector<unsigned char> &vScriptId, vector<unsigned char> &vValue);
+	bool GetScriptData(const vector<unsigned char> &vScriptId, const int &nIndex, vector<unsigned char> &vScriptKey, vector<unsigned char> &vScriptData,
+			int &nHeight);
+
 };
 #endif // BITCOIN_TXDB_LEVELDB_H

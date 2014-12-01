@@ -51,8 +51,8 @@ public:
 		vAlertPubKey =
 				ParseHex(
 						"04fc9702847840aaf195de8442ebecedf5b095cdbb9bc716bda9110971b28a49e0ead8564ff0db22209e0374782c093bb899692d524e9d6a6956e7c5ecbcd68284");
-		nDefaultPort = 8333;
-		nRPCPort = 8332;
+		nDefaultPort = 8555;
+		nRPCPort = 8552;
 		bnProofOfStakeLimit = CBigNum(~uint256(0) >> 20);        //00 00 0f ff ff
 		nSubsidyHalvingInterval = 210000;
 
@@ -88,17 +88,17 @@ public:
 //			cout << "main hashGenesisBlock:\r\n" << hashGenesisBlock.ToString() << endl;
 //			cout << "main hashMerkleRoot:\r\n" << genesis.hashMerkleRoot.ToString() << endl;
 //		}
-//      cout << "hashGenesisBlock:" << HexStr(hashGenesisBlock) << endl;
-//      cout << "hashMerkleRoot:" << genesis.hashMerkleRoot.GetHex() << endl;
+//        cout << "hashGenesisBlock:" << HexStr(hashGenesisBlock) << endl;
+//        cout << "hashMerkleRoot:" << genesis.hashMerkleRoot.GetHex() << endl;
 //		assert(hashGenesisBlock == uint256("0x0d48e88dca01697d10e0fe8f1981f94db1f5e525d5a0e0acf22919af23daed60"));
-		assert(genesis.hashMerkleRoot == uint256("04b173fc873505d69f5f2a86aa8d7207abe7e0ffa63d786ff230f4a946f5a8255"));
+//		assert(genesis.hashMerkleRoot == uint256("04b173fc873505d69f5f2a86aa8d7207abe7e0ffa63d786ff230f4a946f5a8255"));
 
-		vSeeds.push_back(CDNSSeedData("bitcoin.sipa.be", "seed.bitcoin.sipa.be"));
-		vSeeds.push_back(CDNSSeedData("bluematt.me", "dnsseed.bluematt.me"));
-		vSeeds.push_back(CDNSSeedData("dashjr.org", "dnsseed.bitcoin.dashjr.org"));
-		vSeeds.push_back(CDNSSeedData("bitcoinstats.com", "seed.bitcoinstats.com"));
-		vSeeds.push_back(CDNSSeedData("bitnodes.io", "seed.bitnodes.io"));
-		vSeeds.push_back(CDNSSeedData("xf2.org", "bitseed.xf2.org"));
+//		vSeeds.push_back(CDNSSeedData("bitcoin.sipa.be", "seed.bitcoin.sipa.be"));
+//		vSeeds.push_back(CDNSSeedData("bluematt.me", "dnsseed.bluematt.me"));
+//		vSeeds.push_back(CDNSSeedData("dashjr.org", "dnsseed.bitcoin.dashjr.org"));
+//		vSeeds.push_back(CDNSSeedData("bitcoinstats.com", "seed.bitcoinstats.com"));
+//		vSeeds.push_back(CDNSSeedData("bitnodes.io", "seed.bitnodes.io"));
+//		vSeeds.push_back(CDNSSeedData("xf2.org", "bitseed.xf2.org"));
 
 		base58Prefixes[PUBKEY_ADDRESS] = {0};
 		base58Prefixes[SCRIPT_ADDRESS] = {5};
@@ -151,7 +151,7 @@ protected:
 	CBlock genesis;
 	vector<CAddress> vFixedSeeds;
 };
-static CMainParams mainParams;
+//static CMainParams mainParams;
 
 //
 // Testnet (v3)
@@ -168,9 +168,11 @@ public:
 		pchMessageStart[3] = 0x07;
 		vAlertPubKey =
 				ParseHex(
-						"04302390343f91cc401d56d68b123028bf52e5fca1939df127f63c6467cdf9c8e2c14b61104cf817d0b780da337893ecc4aaff1309e536162dabbdb45200ca2b0a");
-		nDefaultPort = 18333;
-		nRPCPort = 18332;
+						"04302390343f91cc401d56d68b123028bf52e5fca1939df127f63c646"
+						"7cdf9c8e2c14b61104cf817d0b780da337893ecc4aaff1309e536162d"
+						"abbdb45200ca2b0a");
+		nDefaultPort = 18555;
+		nRPCPort = 18552;
 		strDataDir = "testnet3";
 
 		// Modify the testnet genesis block so the timestamp is valid for a later start.
@@ -205,7 +207,7 @@ public:
 		return true;
 	}
 };
-static CTestNetParams testNetParams;
+//static CTestNetParams testNetParams;
 
 //
 // Regression test
@@ -223,7 +225,7 @@ public:
 		genesis.nBits = 0x1f0000ff;
 		genesis.nNonce = 888;
 		hashGenesisBlock = genesis.GetHash();
-		nDefaultPort = 18444;
+		nDefaultPort = 18666;
 		strDataDir = "regtest";
 //		{
 //			CBigNum bnTarget;
@@ -249,48 +251,48 @@ public:
 		return true;
 	}
 };
-static CRegTestParams regTestParams;
+//static CRegTestParams regTestParams;
 
-static CBaseParams *pCurrentParams = &mainParams;
+//static CBaseParams *pCurrentParams = &mainParams;
 
-CBaseParams &Params() {
-	return *pCurrentParams;
-}
+//CBaseParams &Params() {
+//	return *pCurrentParams;
+//}
 
-void SelectParams(CBaseParams::Network network) {
-	switch (network) {
-	case CBaseParams::MAIN:
-		pCurrentParams = &mainParams;
-		break;
-	case CBaseParams::TESTNET:
-		pCurrentParams = &testNetParams;
-		break;
-	case CBaseParams::REGTEST:
-		pCurrentParams = &regTestParams;
-		break;
-	default:
-		assert(false && "Unimplemented network");
-		return;
-	}
-}
+//void SelectParams(CBaseParams::Network network) {
+//	switch (network) {
+//	case CBaseParams::MAIN:
+//		pCurrentParams = &mainParams;
+//		break;
+//	case CBaseParams::TESTNET:
+//		pCurrentParams = &testNetParams;
+//		break;
+//	case CBaseParams::REGTEST:
+//		pCurrentParams = &regTestParams;
+//		break;
+//	default:
+//		assert(false && "Unimplemented network");
+//		return;
+//	}
+//}
 
-bool SelectParamsFromCommandLine() {
-	bool fRegTest = GetBoolArg("-regtest", false);
-	bool fTestNet = GetBoolArg("-testnet", false);
-
-	if (fTestNet && fRegTest) {
-		return false;
-	}
-
-	if (fRegTest) {
-		SelectParams(CBaseParams::REGTEST);
-	} else if (fTestNet) {
-		SelectParams(CBaseParams::TESTNET);
-	} else {
-		SelectParams(CBaseParams::MAIN);
-	}
-	return true;
-}
+//bool SelectParamsFromCommandLine() {
+//	bool fRegTest = GetBoolArg("-regtest", false);
+//	bool fTestNet = GetBoolArg("-testnet", false);
+//
+//	if (fTestNet && fRegTest) {
+//		return false;
+//	}
+//
+//	if (fRegTest) {
+//		SelectParams(CBaseParams::REGTEST);
+//	} else if (fTestNet) {
+//		SelectParams(CBaseParams::TESTNET);
+//	} else {
+//		SelectParams(CBaseParams::MAIN);
+//	}
+//	return true;
+//}
 
 /********************************************************************************/
 const vector<string> &CBaseParams::GetMultiArgs(const string& strArg) {
@@ -325,6 +327,11 @@ bool CBaseParams::SoftSetArg(const string& strArg, const string& strValue) {
 	return true;
 }
 
+bool CBaseParams::SoftSetArgCover(const string& strArg, const string& strValue) {
+	m_mapArgs[strArg] = strValue;
+	return true;
+}
+
 bool CBaseParams::SoftSetBoolArg(const string& strArg, bool fValue) {
 	if (fValue)
 		return SoftSetArg(strArg, string("1"));
@@ -339,7 +346,7 @@ bool CBaseParams::IsArgCount(const string& strArg) {
 	return false;
 }
 
-const CBaseParams &SysParams() {
+const CBaseParams &SysCfg() {
 	static shared_ptr<CBaseParams> pParams;
 
 	if (pParams.get() == NULL) {
@@ -351,18 +358,18 @@ const CBaseParams &SysParams() {
 		}
 
 		if (fRegTest) {
-			LogPrint("spark", "In Reg Test Net\n");
+			//LogPrint("spark", "In Reg Test Net\n");
 			pParams = make_shared<CRegTestParams>();
 		} else if (fTestNet) {
-			LogPrint("spark", "In Test Net\n");
+			//LogPrint("spark", "In Test Net\n");
 			pParams = make_shared<CTestNetParams>();
 		} else {
-			LogPrint("spark", "In Main Net\n");
+			//LogPrint("spark", "In Main Net\n");
 			pParams = make_shared<CMainParams>();
 		}
-		assert(pParams != NULL);
-	}
 
+	}
+	assert(pParams != NULL);
 	return *pParams.get();
 }
 
@@ -396,7 +403,7 @@ static void InterpretNegativeSetting(string name, map<string, string>& mapSettin
 		string positive("-");
 		positive.append(name.begin() + 3, name.end());
 		if (mapSettingsRet.count(positive) == 0) {
-			bool value = !CBaseParams::GetBoolArg(name, false);
+			bool value = !SysCfg().GetBoolArg(name, false);
 			mapSettingsRet[positive] = (value ? "1" : "0");
 		}
 	}
@@ -451,7 +458,7 @@ void CBaseParams::ParseParameters(int argc, const char* const argv[]) {
 bool CBaseParams::IntialParams(int argc, const char* const argv[]) {
 	ParseParameters(argc, argv);
 	if (!boost::filesystem::is_directory(GetDataDir(false))) {
-		fprintf(stderr, "Error: Specified data directory \"%s\" does not exist.\n", mapArgs["-datadir"].c_str());
+		fprintf(stderr, "Error: Specified data directory \"%s\" does not exist.\n", CBaseParams::m_mapArgs["-datadir"].c_str());
 		return false;
 	}
 	try {
@@ -460,11 +467,6 @@ bool CBaseParams::IntialParams(int argc, const char* const argv[]) {
 		fprintf(stderr, "Error reading configuration file: %s\n", e.what());
 		return false;
 	}
-	// Check for -testnet or -regtest parameter (TestNet() calls are only valid after this clause)
-//	if (!SelectParamsFromCommandLine()) {
-//		fprintf(stderr, "Error: Invalid combination of -regtest and -testnet.\n");
-//		return false;
-//	}
 	return true;
 }
 

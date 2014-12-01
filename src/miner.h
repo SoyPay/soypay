@@ -19,14 +19,14 @@
 class CBlock;
 class CBlockIndex;
 struct CBlockTemplate;
-class CReserveKey;
-class CScript;
+//class CReserveKey;
+//class CScript;
 class CWallet;
 class CBaseTransaction;
 class COrphan;
 class CAccountViewCache;
-class CContractScriptCache;
 class CTransactionCache;
+class CScriptDBViewCache;
 
 typedef boost::tuple<double, double, std::shared_ptr<CBaseTransaction> > TxPriority;
 class TxPriorityCompare
@@ -54,8 +54,8 @@ public:
 /** Run the miner threads */
 void GenerateBitcoins(bool fGenerate, CWallet* pwallet, int nThreads);
 /** Generate a new block, without valid proof-of-work */
-CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn);
-CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey);
+//CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn);
+//CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey);
 
 CBlockTemplate* CreateNewBlock();
 /** Modify the extranonce in a block */
@@ -65,16 +65,18 @@ void FormatHashBuffers(CBlock* pblock, char* pmidstate, char* pdata, char* phash
 
 bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCreateKey);
 
-bool VerifyPosTx(const CBlockIndex *pPrevIndex, CAccountViewCache &accView, const CBlock *pBlock, uint64_t &nInterest, CTransactionCache &txCache, CContractScriptCache &scriptCache, bool bJustCheckSign = false);
+bool VerifyPosTx(const CBlockIndex *pPrevIndex, CAccountViewCache &accView, const CBlock *pBlock, uint64_t &nInterest, CTransactionCache &txCache, CScriptDBViewCache &scriptCache, bool bJustCheckSign = false);
 /** Check mined block */
 bool CheckWork(CBlock* pblock, CWallet& wallet);
 /** Base sha256 mining transform */
 void SHA256Transform(void* pstate, void* pinput, const void* pinit);
+/** Get burn element */
+uint64_t GetElementForBurn(CBlockIndex *pindex);
 
 void GetPriorityTx(vector<TxPriority> &vecPriority, map<uint256, vector<COrphan*> > &mapDependers);
 extern double dHashesPerSec;
 extern int64_t nHPSTimerStart;
 
-extern bool CreateBlockWithAppointedAddr(CKeyID &keyID);
+extern uint256 CreateBlockWithAppointedAddr(CKeyID const &keyID);
 
 #endif // BITCOIN_MINER_H

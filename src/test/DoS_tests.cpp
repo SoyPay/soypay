@@ -10,7 +10,7 @@
 #include "keystore.h"
 #include "main.h"
 #include "net.h"
-#include "script.h"
+#include "key.h"
 #include "serialize.h"
 
 #include <stdint.h>
@@ -28,7 +28,7 @@ extern std::map<uint256, std::set<uint256> > mapOrphanTransactionsByPrev;
 CService ip(uint32_t i) {
 	struct in_addr s;
 	s.s_addr = i;
-	return CService(CNetAddr(s), Params().GetDefaultPort());
+	return CService(CNetAddr(s), SysCfg().GetDefaultPort());
 }
 
 BOOST_AUTO_TEST_SUITE(DoS_tests)
@@ -115,7 +115,7 @@ BOOST_AUTO_TEST_CASE(DoS_checknbits)
 {
 	using namespace boost::assign; // for 'map_list_of()'
 
-	// Timestamps,nBits from the bitcoin block chain.
+	// Timestamps,nBits from the soypay block chain.
 	// These are the block-chain checkpoint blocks
 	typedef std::map<int64_t, unsigned int> BlockData;
 	BlockData chainData =

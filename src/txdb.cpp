@@ -140,15 +140,15 @@ CAccountViewDB::CAccountViewDB(size_t nCacheSize, bool fMemory, bool fWipe) :
 
 }
 
-bool CAccountViewDB::GetAccount(const CKeyID &keyId, CSecureAccount &secureAccount) {
+bool CAccountViewDB::GetAccount(const CKeyID &keyId, CAccount &secureAccount) {
 	return db.Read(make_pair('k', keyId), secureAccount);
 }
 
-bool CAccountViewDB::SetAccount(const CKeyID &keyId, const CSecureAccount &secureAccount) {
+bool CAccountViewDB::SetAccount(const CKeyID &keyId, const CAccount &secureAccount) {
 	return db.Write(make_pair('k', keyId), secureAccount);
 }
 
-bool CAccountViewDB::SetAccount(const vector<unsigned char> &accountId, const CSecureAccount &secureAccount) {
+bool CAccountViewDB::SetAccount(const vector<unsigned char> &accountId, const CAccount &secureAccount) {
 	CKeyID keyId;
 	if (db.Read(make_pair('a', accountId), keyId)) {
 		return db.Write(make_pair('k', keyId), secureAccount);
@@ -170,10 +170,10 @@ bool CAccountViewDB::SetBestBlock(const uint256 &hashBlock) {
 	return db.Write('B', hashBlock);
 }
 
-bool CAccountViewDB::BatchWrite(const map<CKeyID, CSecureAccount> &mapAccounts,
+bool CAccountViewDB::BatchWrite(const map<CKeyID, CAccount> &mapAccounts,
 		const map<string, CKeyID> &mapKeyIds, const uint256 &hashBlock) {
 	CLevelDBBatch batch;
-	map<CKeyID, CSecureAccount>::const_iterator iterAccount = mapAccounts.begin();
+	map<CKeyID, CAccount>::const_iterator iterAccount = mapAccounts.begin();
 	for (; iterAccount != mapAccounts.end(); ++iterAccount) {
 		if (uint160(0) == iterAccount->second.keyID) {
 			batch.Erase(make_pair('k', iterAccount->first));
@@ -196,9 +196,9 @@ bool CAccountViewDB::BatchWrite(const map<CKeyID, CSecureAccount> &mapAccounts,
 	return db.WriteBatch(batch, false);
 }
 
-bool CAccountViewDB::BatchWrite(const vector<CSecureAccount> &vAccounts) {
+bool CAccountViewDB::BatchWrite(const vector<CAccount> &vAccounts) {
 	CLevelDBBatch batch;
-	vector<CSecureAccount>::const_iterator iterAccount = vAccounts.begin();
+	vector<CAccount>::const_iterator iterAccount = vAccounts.begin();
 	for (; iterAccount != vAccounts.end(); ++iterAccount) {
 		batch.Write(make_pair('k', iterAccount->keyID), *iterAccount);
 	}
@@ -221,7 +221,7 @@ bool CAccountViewDB::EraseKeyId(const vector<unsigned char> &accountId) {
 	return db.Erase(make_pair('a', accountId));
 }
 
-bool CAccountViewDB::GetAccount(const vector<unsigned char> &accountId, CSecureAccount &secureAccount) {
+bool CAccountViewDB::GetAccount(const vector<unsigned char> &accountId, CAccount &secureAccount) {
 	CKeyID keyId;
 	if (db.Read(make_pair('a', accountId), keyId)) {
 		return db.Read(make_pair('k', keyId), secureAccount);
@@ -230,7 +230,7 @@ bool CAccountViewDB::GetAccount(const vector<unsigned char> &accountId, CSecureA
 }
 
 bool CAccountViewDB::SaveAccountInfo(const vector<unsigned char> &accountId, const CKeyID &keyId,
-		const CSecureAccount &secureAccount) {
+		const CAccount &secureAccount) {
 	CLevelDBBatch batch;
 	batch.Write(make_pair('a', accountId), keyId);
 	batch.Write(make_pair('k', keyId), secureAccount);
@@ -241,14 +241,6 @@ CTransactionCacheDB::CTransactionCacheDB(size_t nCacheSize, bool fMemory, bool f
 		CLevelDBWrapper(GetDataDir() / "blocks" / "txcache", nCacheSize, fMemory, fWipe) {
 }
 
-bool CTransactionCacheDB::SetRelayTx(const uint256 &prevhash, const vector<uint256> &vHashTx) {
-	return Write(make_pair('p', prevhash), vHashTx);
-}
-
-bool CTransactionCacheDB::GetRelayTx(const uint256 &prevhash, vector<uint256> &vHashTx) {
-	return Read(make_pair('p', prevhash), vHashTx);
-}
-
 bool CTransactionCacheDB::SetTxCache(const uint256 &blockHash, const vector<uint256> &vHashTx) {
 	return Write(make_pair('h', blockHash), vHashTx);
 }
@@ -257,8 +249,7 @@ bool CTransactionCacheDB::GetTxCache(const uint256 &blockHash, vector<uint256> &
 	return Read(make_pair('h', blockHash), vHashTx);
 }
 
-bool CTransactionCacheDB::Flush(const map<uint256, vector<uint256> > &mapTxHashByBlockHash,
-		const map<uint256, vector<uint256> > &mapTxHashCacheByPrev) {
+bool CTransactionCacheDB::Flush(const map<uint256, vector<uint256> > &mapTxHashByBlockHash) {
 	CLevelDBBatch batch;
 	for (auto & item : mapTxHashByBlockHash) {
 		if(item.second.empty()) {
@@ -268,18 +259,10 @@ bool CTransactionCacheDB::Flush(const map<uint256, vector<uint256> > &mapTxHashB
 		}
 	}
 
-	for (auto & item : mapTxHashCacheByPrev) {
-		if (item.second.empty()) {
-			batch.Erase(make_pair('p', item.first));
-		} else {
-			batch.Write(make_pair('p', item.first), item.second);
-		}
-	}
 	return WriteBatch(batch, false);
 }
 
-bool CTransactionCacheDB::LoadTransaction(map<uint256, vector<uint256> > &mapTxHashByBlockHash,
-		map<uint256, vector<uint256> > &mapTxHashCacheByPrev) {
+bool CTransactionCacheDB::LoadTransaction(map<uint256, vector<uint256> > &mapTxHashByBlockHash) {
 
 	leveldb::Iterator *pcursor = NewIterator();
 
@@ -304,15 +287,6 @@ bool CTransactionCacheDB::LoadTransaction(map<uint256, vector<uint256> > &mapTxH
 				ssKey >> blockHash;
 				mapTxHashByBlockHash[blockHash] = vTxhash;
 				pcursor->Next();
-			} else if (chType == 'p') {
-				leveldb::Slice slValue = pcursor->value();
-				CDataStream ssValue(slValue.data(), slValue.data() + slValue.size(), SER_DISK, CLIENT_VERSION);
-				vector<uint256> hashTxSet;
-				uint256 preTxHash;
-				ssValue >> hashTxSet;
-				ssKey >> preTxHash;
-				mapTxHashCacheByPrev[preTxHash] = hashTxSet;
-				pcursor->Next();
 			} else {
 				break; // if shutdown requested or finished loading block index
 			}
@@ -324,151 +298,143 @@ bool CTransactionCacheDB::LoadTransaction(map<uint256, vector<uint256> > &mapTxH
 	return true;
 }
 
+
 CScriptDB::CScriptDB(size_t nCacheSize, bool fMemory, bool fWipe) :
-		CLevelDBWrapper(GetDataDir() / "blocks" / "script", nCacheSize, fMemory, fWipe) {
+		db(GetDataDir() / "blocks" / "script", nCacheSize, fMemory, fWipe){
+
+}
+bool CScriptDB::GetData(const vector<unsigned char> &vKey, vector<unsigned char> &vValue) {
+	return db.Read(vKey, vValue);
 }
 
-bool CScriptDB::SetArbitrator(const vector<unsigned char> &scriptId, const set<string> &setArbitrator) {
-	return Write(make_pair('a', scriptId), setArbitrator);
-//	string strScriptId = HexStr(scriptId.begin(), scriptId.end());
-//	CContractScript ascript;
-//	if (!mapScript.count(strScriptId)) {
-//		return false;
+bool CScriptDB::SetData(const vector<unsigned char> &vKey, const vector<unsigned char> &vValue) {
+//	vector<unsigned char> vTemp = { 0x64, 0x61, 0x74, 0x61, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x5f, 0x6b, 0x65, 0x79,	0x31, 0x00 };
+//	if (vKey == vTemp) {
+//		LogPrint("INFO", "set value item key:%s ,item value:%s\n", HexStr(vKey), HexStr(vValue));
 //	}
-//
-//	ascript = mapScript[strScriptId];
-//	ascript.setArbitratorAccId = setArbitrator;
-//	mapScript[strScriptId] = ascript;
-//	return true;
+
+	return db.Write(vKey, vValue);
 }
-bool CScriptDB::SetScript(const vector<unsigned char> &scriptId, const vector<unsigned char> &vScript) {
-	return Write(make_pair('s', scriptId), vScript);
-//	string strScriptId = HexStr(scriptId.begin(), scriptId.end());
-//	CContractScript ascript;
-//	if (!mapScript.count(strScriptId)) {
-//		ascript.scriptContent = vScript;
-//		ascript.scriptId = scriptId;
-//		ascript.setArbitratorAccId.clear();
-//		mapScript[strScriptId] = ascript;
-//		return true;
-//	}
-//	ascript = mapScript[strScriptId];
-//	ascript.scriptContent = vScript;
-//	mapScript[strScriptId] = ascript;
-//	return true;
-}
-bool CScriptDB::GetArbitrator(const vector<unsigned char> &scriptId, set<string> &setArbitrator) {
-	return Read(make_pair('a', scriptId), setArbitrator);
-//	string strScriptId = HexStr(scriptId.begin(), scriptId.end());
-//	CContractScript ascript;
-//	if (!mapScript.count(strScriptId)) {
-//		return false;
-//	}
-//
-//	ascript = mapScript[strScriptId];
-//	setArbitrator = ascript.setArbitratorAccId;
-//	return true;
-}
-bool CScriptDB::GetScript(const vector<unsigned char> &scriptId, vector<unsigned char> &vScript) {
-	return Read(make_pair('s', scriptId), vScript);
-//	string strScriptId = HexStr(scriptId.begin(), scriptId.end());
-//	CContractScript ascript;
-//	if (!mapScript.count(strScriptId)) {
-//		return false;
-//	}
-//
-//	ascript = mapScript[strScriptId];
-//	vScript = ascript.scriptContent;
-//	return true;
-}
-bool CScriptDB::EraseScript(const vector<unsigned char> & scriptId) {
+bool CScriptDB::BatchWrite(const map<vector<unsigned char>, vector<unsigned char> > &mapDatas) {
 	CLevelDBBatch batch;
-	batch.Erase(make_pair('s', scriptId));
-	batch.Erase(make_pair('a', scriptId));
-	return WriteBatch(batch, false);
-//	string strScriptId = HexStr(scriptId.begin(), scriptId.end());
-//	CContractScript ascript;
-//	if (!mapScript.count(strScriptId)) {
-//		return false;
-//	}
-//
-//	ascript = mapScript[strScriptId];
-//	ascript.scriptId.clear();
-//	mapScript[strScriptId] = ascript;
-//	return true;
-}
-
-bool CScriptDB::GetContractScript(const vector<unsigned char> &scriptId, CContractScript &contractScript) {
-	contractScript.scriptId = scriptId;
-	if(!GetScript(scriptId, contractScript.scriptContent))
-		return false;
-	if(!GetArbitrator(scriptId, contractScript.setArbitratorAccId))
-		return false;
-	return true;
-}
-
-bool CScriptDB::Flush(const map<string, CContractScript> &mapScriptCache){
-	CLevelDBBatch batch;
-	vector<unsigned char> vScriptID;
-	map<string, CContractScript>::const_iterator iterScript =  mapScriptCache.begin();
-	for(; iterScript != mapScriptCache.end(); ++iterScript) {
-		vScriptID = ParseHex(iterScript->first.c_str());
-		if(iterScript->second.scriptId.empty() ){
-			batch.Erase(make_pair('s', vScriptID));
-			batch.Erase(make_pair('a', vScriptID));
-		}else{
-			batch.Write(make_pair('s', vScriptID), iterScript->second.scriptContent);
-			batch.Write(make_pair('a', vScriptID), iterScript->second.setArbitratorAccId);
+	for (auto & item : mapDatas) {
+//		vector<unsigned char> vTemp = { 0x64, 0x61, 0x74, 0x61, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x5f, 0x6b, 0x65,
+//				0x79, 0x31, 0x00 };
+//		if (item.first == vTemp) {
+//			LogPrint("INFO", "set value item key:%s ,item value:%s\n", HexStr(item.first), HexStr(item.second));
+//		}
+		if (item.second.empty()) {
+			batch.Erase(item.first);
+		} else {
+			batch.Write(item.first, item.second);
 		}
 	}
-
-	return WriteBatch(batch, false);
+	return db.WriteBatch(batch);
 }
-bool CScriptDB::LoadRegScript(map<string, CContractScript> &mapScriptCache) {
-
-	leveldb::Iterator *pcursor = NewIterator();
-	vector<unsigned char> vTemp;
+bool CScriptDB::EraseKey(const vector<unsigned char> &vKey) {
+	return db.Erase(vKey);
+}
+bool CScriptDB::HaveData(const vector<unsigned char> &vKey) {
+	return db.Exists(vKey);
+}
+bool CScriptDB::GetScript(const int &nIndex, vector<unsigned char> &vScriptId, vector<unsigned char> &vValue) {
+	assert(nIndex >= 0 && nIndex <=1);
+	leveldb::Iterator* pcursor = db.NewIterator();
 	CDataStream ssKeySet(SER_DISK, CLIENT_VERSION);
-	ssKeySet << make_pair('a', vTemp);
+	string strPrefixTemp("def");
+	//ssKeySet.insert(ssKeySet.end(), 9);
+	ssKeySet.insert(ssKeySet.end(), &strPrefixTemp[0], &strPrefixTemp[3]);
+	if(1 == nIndex ) {
+		if(vScriptId.empty()) {
+			return ERROR("GetScript() : nIndex is 1, and vScriptId is empty");
+		}
+		vector<char> vId(vScriptId.begin(), vScriptId.end());
+		ssKeySet.insert(ssKeySet.end(), vId.begin(), vId.end());
+	}
 	pcursor->Seek(ssKeySet.str());
-
-	// Load mapBlockIndex
-	while (pcursor->Valid()) {
+	int i = nIndex;
+	while(pcursor->Valid() && i-->=0) {
 		boost::this_thread::interruption_point();
 		try {
 			leveldb::Slice slKey = pcursor->key();
-			CDataStream ssKey(slKey.data(), slKey.data() + slKey.size(), SER_DISK, CLIENT_VERSION);
-			char chType;
-			ssKey >> chType;
-			CContractScript ascript;
-			ssKey >> ascript.scriptId;
-			string strScriptId = HexStr(ascript.scriptId.begin(), ascript.scriptId.end());
-			if (mapScriptCache.count(strScriptId)) {
-				ascript = mapScriptCache[strScriptId];
-			}
-			if (chType == 'a') {
-				leveldb::Slice slValue = pcursor->value();
-				CDataStream ssValue(slValue.data(), slValue.data() + slValue.size(), SER_DISK, CLIENT_VERSION);
-				set<string> setArbitrator;
-				ssValue >> setArbitrator;
-				ascript.setArbitratorAccId.insert(setArbitrator.begin(), setArbitrator.end());
+//			CDataStream ssKey(slKey.data(), slKey.data() + slKey.size(), SER_DISK, CLIENT_VERSION);
+			string strScriptKey(slKey.data(), 0, slKey.size());
+//			ssKey >> strScriptKey;
+			string strPrefix = strScriptKey.substr(0,3);
+			if (strPrefix == "def") {
+				if(-1 == i) {
+					leveldb::Slice slValue = pcursor->value();
+					CDataStream ssValue(slValue.data(), slValue.data() + slValue.size(), SER_DISK, CLIENT_VERSION);
+					ssValue >> vValue;
+					vScriptId.clear();
+					vScriptId.insert(vScriptId.end(), slKey.data()+3, slKey.data()+slKey.size());
+				}
 				pcursor->Next();
-			} else if (chType == 's') {
-				leveldb::Slice slValue = pcursor->value();
-				CDataStream ssValue(slValue.data(), slValue.data() + slValue.size(), SER_DISK, CLIENT_VERSION);
-				vector<unsigned char> vScript;
-				ssValue >> vScript;
-				ascript.scriptContent = vScript;
+			}
+			else
+			{
+				delete pcursor;
+				return false;
+			}
+		}catch (std::exception &e) {
+				return ERROR("%s : Deserialize or I/O error - %s", __func__, e.what());
+		}
+	}
+	delete pcursor;
+	if(i >= 0)
+		return false;
+	return true;
+}
+bool CScriptDB::GetScriptData(const vector<unsigned char> &vScriptId, const int &nIndex,
+		vector<unsigned char> &vScriptKey, vector<unsigned char> &vScriptData, int &nHeight) {
+	assert(nIndex >= 0 && nIndex <=1);
+	leveldb::Iterator* pcursor = db.NewIterator();
+	CDataStream ssKeySet(SER_DISK, CLIENT_VERSION);
+
+	string strPrefixTemp("data");
+	//ssKeySet.insert(ssKeySet.end(), 19);
+	ssKeySet.insert(ssKeySet.end(), &strPrefixTemp[0], &strPrefixTemp[4]);
+	vector<char> vId(vScriptId.begin(), vScriptId.end());
+	ssKeySet.insert(ssKeySet.end(), vId.begin(), vId.end());
+	ssKeySet.insert(ssKeySet.end(),'_');
+	if (1 == nIndex) {
+		if(vScriptKey.empty()) {
+			return ERROR("GetScriptData() : nIndex is 1, and vScriptKey is empty");
+		}
+		vector<char> vsKey(vScriptKey.begin(), vScriptKey.end());
+		ssKeySet.insert(ssKeySet.end(), vsKey.begin(), vsKey.end());
+	}
+	pcursor->Seek(ssKeySet.str());
+	int i = nIndex;
+	while (pcursor->Valid() && i-- >= 0) {
+		boost::this_thread::interruption_point();
+		try {
+			leveldb::Slice slKey = pcursor->key();
+//			CDataStream ssKey(slKey.data(), slKey.data() + slKey.size(), SER_DISK, CLIENT_VERSION);
+			string strScriptKey(slKey.data(), 0, slKey.size());
+//			ssKey >> strScriptKey;
+			string strPrefix = strScriptKey.substr(0, 4);
+			if (strPrefix == "data") {
+				if (-1 == i) {
+					vector<unsigned char> vValue;
+					leveldb::Slice slValue = pcursor->value();
+					CDataStream ssValue(slValue.data()+1, slValue.data() + slValue.size(), SER_DISK, CLIENT_VERSION);
+					ssValue >> nHeight;
+					ssValue >> vScriptData;
+					vScriptKey.clear();
+					vScriptKey.insert(vScriptKey.end(), slKey.data()+11, slKey.data()+slKey.size());
+				}
 				pcursor->Next();
 			} else {
-				break; // if shutdown requested or finished loading block index
+				delete pcursor;
+				return false;
 			}
-			mapScriptCache[strScriptId] = ascript;
 		} catch (std::exception &e) {
 			return ERROR("%s : Deserialize or I/O error - %s", __func__, e.what());
 		}
 	}
 	delete pcursor;
-
+	if(i >= 0)
+		return false;
 	return true;
 }

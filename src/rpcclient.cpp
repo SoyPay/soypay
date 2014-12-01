@@ -28,14 +28,14 @@ using namespace json_spirit;
 
 Object CallRPC(const string& strMethod, const Array& params)
 {
-    if (mapArgs["-rpcuser"] == "" && mapArgs["-rpcpassword"] == "")
+    if (SysCfg().GetArg("-rpcuser", "") == "" && SysCfg().GetArg("-rpcpassword", "") == "")
         throw runtime_error(strprintf(
             _("You must set rpcpassword=<password> in the configuration file:\n%s\n"
               "If the file does not exist, create it with owner-readable-only file permissions."),
                 GetConfigFile().string().c_str()));
 
     // Connect to localhost
-    bool fUseSSL = GetBoolArg("-rpcssl", false);
+    bool fUseSSL = SysCfg().GetBoolArg("-rpcssl", false);
     asio::io_service io_service;
     ssl::context context(io_service, ssl::context::sslv23);
     context.set_options(ssl::context::no_sslv2);
@@ -43,9 +43,9 @@ Object CallRPC(const string& strMethod, const Array& params)
     SSLIOStreamDevice<asio::ip::tcp> d(sslStream, fUseSSL);
     iostreams::stream< SSLIOStreamDevice<asio::ip::tcp> > stream(d);
 
-    bool fWait = GetBoolArg("-rpcwait", false); // -rpcwait means try until server has started
+    bool fWait = SysCfg().GetBoolArg("-rpcwait", false); // -rpcwait means try until server has started
     do {
-        bool fConnected = d.connect(GetArg("-rpcconnect", "127.0.0.1"), GetArg("-rpcport", itostr(Params().RPCPort())));
+        bool fConnected = d.connect(SysCfg().GetArg("-rpcconnect", "127.0.0.1"), SysCfg().GetArg("-rpcport", itostr(SysCfg().RPCPort())));
         if (fConnected) break;
         if (fWait)
             MilliSleep(1000);
@@ -54,7 +54,7 @@ Object CallRPC(const string& strMethod, const Array& params)
     } while (fWait);
 
     // HTTP basic authentication
-    string strUserPass64 = EncodeBase64(mapArgs["-rpcuser"] + ":" + mapArgs["-rpcpassword"]);
+    string strUserPass64 = EncodeBase64(SysCfg().GetArg("-rpcuser", "") + ":" + SysCfg().GetArg("-rpcpassword", ""));
     map<string, string> mapRequestHeaders;
     mapRequestHeaders["Authorization"] = string("Basic ") + strUserPass64;
 
@@ -130,6 +130,7 @@ Array RPCConvertValues(const string &strMethod, const vector<string> &strParams)
     if (strMethod == "getnetworkhashps"       && n > 0) ConvertTo<int64_t>(params[0]);
     if (strMethod == "getnetworkhashps"       && n > 1) ConvertTo<int64_t>(params[1]);
     if (strMethod == "sendtoaddress"          && n > 1) ConvertTo<double>(params[1]);
+    if (strMethod == "sendtoaddress"          && n > 2) ConvertTo<double>(params[2]);
     if (strMethod == "settxfee"               && n > 0) ConvertTo<double>(params[0]);
     if (strMethod == "getreceivedbyaddress"   && n > 1) ConvertTo<int64_t>(params[1]);
     if (strMethod == "getreceivedbyaccount"   && n > 1) ConvertTo<int64_t>(params[1]);
@@ -177,8 +178,8 @@ Array RPCConvertValues(const string &strMethod, const vector<string> &strParams)
 
     if (strMethod == "getnewaddress"       && n > 0) ConvertTo<bool>(params[0]);
 
-    if (strMethod == "registersecuretx"          && n > 1) ConvertTo<int64_t>(params[1]);
-    if (strMethod == "registersecuretx"          && n > 2) ConvertTo<int>(params[2]);
+    if (strMethod == "registeraccounttx"          && n > 1) ConvertTo<int64_t>(params[1]);
+    if (strMethod == "registeraccounttx"          && n > 2) ConvertTo<bool>(params[2]);
 
     if (strMethod == "createnormaltx"          && n > 2) ConvertTo<int64_t>(params[2]);
     if (strMethod == "createnormaltx"          && n > 3) ConvertTo<int64_t>(params[3]);
@@ -191,13 +192,23 @@ Array RPCConvertValues(const string &strMethod, const vector<string> &strParams)
     if (strMethod == "createfreezetx"          && n > 3) ConvertTo<int>(params[3]);
     if (strMethod == "createfreezetx"          && n > 4) ConvertTo<int>(params[4]);
 
-    if (strMethod == "registerscripttx"          && n > 2) ConvertTo<int64_t>(params[2]);
-    if (strMethod == "registerscripttx"          && n > 3) ConvertTo<int>(params[3]);
+    if (strMethod == "registerscripttx"          && n > 1) ConvertTo<int>(params[1]);
+    if (strMethod == "registerscripttx"          && n > 3) ConvertTo<int64_t>(params[3]);
+    if (strMethod == "registerscripttx"          && n > 4) ConvertTo<int>(params[4]);
+    if (strMethod == "registerscripttx"          && n > 5) ConvertTo<int>(params[5]);
+    if (strMethod == "registerscripttx"          && n > 7) ConvertTo<uint64_t>(params[6]);
+    if (strMethod == "registerscripttx"          && n > 8) ConvertTo<uint64_t>(params[7]);
+    if (strMethod == "registerscripttx"          && n > 9) ConvertTo<uint64_t>(params[8]);
+
 
     if (strMethod == "createsecuretx"          && n > 1) ConvertTo<Array>(params[1]);
     if (strMethod == "createsecuretx"          && n > 2) ConvertTo<Array>(params[2]);
     if (strMethod == "createsecuretx"          && n > 4) ConvertTo<int>(params[4]);
     if (strMethod == "createsecuretx"          && n > 5) ConvertTo<int>(params[5]);
+
+    if (strMethod == "createcontracttx"          && n > 1) ConvertTo<Array>(params[1]);
+	if (strMethod == "createcontracttx"          && n > 3) ConvertTo<int64_t>(params[3]);
+	if (strMethod == "createcontracttx"          && n > 4) ConvertTo<int>(params[4]);
 
     if (strMethod == "listaddrtx"          && n > 1) ConvertTo<bool>(params[1]);
     if (strMethod == "listunconfirmedtx"          && n > 0) ConvertTo<bool>(params[0]);
@@ -209,6 +220,11 @@ Array RPCConvertValues(const string &strMethod, const vector<string> &strParams)
 
     if (strMethod == "getoneaddr"          && n > 0) ConvertTo<int64_t>(params[0]);
     if (strMethod == "getoneaddr"          && n > 1) ConvertTo<bool>(params[1]);
+    if (strMethod == "getoneaddr"          && n > 1) ConvertTo<bool>(params[1]);
+    if (strMethod == "getscriptdata"          && n > 1) ConvertTo<int>(params[1]);
+    if (strMethod == "getscriptdata"          && n > 2) ConvertTo<int>(params[2]);
+    if (strMethod == "listregscript"          && n > 0) ConvertTo<bool>(params[0]);
+
     return params;
 }
 
@@ -285,7 +301,7 @@ string HelpMessageCli(bool mainProgram)
     {
         strUsage += _("Options:") + "\n";
         strUsage += "  -?                     " + _("This help message") + "\n";
-        strUsage += "  -conf=<file>           " + _("Specify configuration file (default: bitcoin.conf)") + "\n";
+        strUsage += "  -conf=<file>           " + _("Specify configuration file (default: soypay.conf)") + "\n";
         strUsage += "  -datadir=<dir>         " + _("Specify data directory") + "\n";
         strUsage += "  -testnet               " + _("Use the test network") + "\n";
         strUsage += "  -regtest               " + _("Enter regression test mode, which uses a special chain in which blocks can be "

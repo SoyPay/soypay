@@ -35,7 +35,6 @@ BITCOIN_CORE_H = \
   checkpoints.h \
   checkqueue.h \
   clientversion.h \
-  coincontrol.h \
   compat.h \
   core.h \
   account.h \
@@ -57,7 +56,6 @@ BITCOIN_CORE_H = \
   rpcclient.h \
   rpcprotocol.h \
   rpcserver.h \
-  script.h \
   serialize.h \
   sync.h \
   threadsafety.h \
@@ -92,9 +90,7 @@ VMSCRIPT_H = \
 	VmScript/TestMcu.h
 
 VMSCRIPT_CPP = \
-	VmScript/CFundOpeator.cpp \
 	VmScript/CVir8051.cpp \
-	VmScript/CVmRule.cpp \
 	VmScript/VmScript.cpp \
 	VmScript/VmScriptRun.cpp \
 	VmScript/TestMcu.cpp
@@ -154,10 +150,12 @@ libsoypay_common_a_SOURCES = \
   netbase.cpp \
   protocol.cpp \
   rpcprotocol.cpp \
-  script.cpp \
   sync.cpp \
   util.cpp \
   version.cpp \
+  json/json_spirit_reader.cpp \
+  json/json_spirit_value.cpp \
+  json/json_spirit_writer.cpp \
   $(BITCOIN_CORE_H)
 
 if GLIBC_BACK_COMPAT
@@ -182,11 +180,11 @@ soypayd_LDADD = \
 if ENABLE_WALLET
 soypayd_LDADD += libsoypay_wallet.a
 endif
-soypayd_SOURCES = bitcoind.cpp
+soypayd_SOURCES = soypayd.cpp
 #
 
 if TARGET_WINDOWS
-soypayd_SOURCES += bitcoind-res.rc
+soypayd_SOURCES += soypayd-res.rc
 endif
 
 AM_CPPFLAGS += $(BDB_CPPFLAGS)
@@ -197,11 +195,11 @@ soypay_cli_LDADD = \
   libsoypay_cli.a \
   libsoypay_common.a \
   $(BOOST_LIBS)
-soypay_cli_SOURCES = bitcoin-cli.cpp
+soypay_cli_SOURCES = soypayd-cli.cpp
 #
 
 if TARGET_WINDOWS
-soypay_cli_SOURCES += bitcoin-cli-res.rc
+soypay_cli_SOURCES += soypay-cli-res.rc
 endif
 
 # NOTE: This dependency is not strictly necessary, but without it make may try to build both in parallel, which breaks the LevelDB build system in a race

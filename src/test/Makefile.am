@@ -49,16 +49,13 @@ soypay_test_SOURCES = \
   netbase_tests.cpp \
   serialize_tests.cpp \
   sigopcount_tests.cpp \
-  test_bitcoin.cpp \
+  test_soypay.cpp \
   uint256_tests.cpp \
   util_tests.cpp \
   sighash_tests.cpp \
   chainparams_tests.cpp \
-  walletdb_tests.cpp \
   tx_tests.cpp \
-  vmscript_test.cpp \
   CVir8051_test.cpp \
-  updateaccount_tests.cpp \
   accountview_tests.cpp \
   scriptdb_tests.cpp \
   betroll_test.cpp \

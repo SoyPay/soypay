@@ -8,7 +8,7 @@
 #include <openssl/ecdsa.h>
 #include <openssl/obj_mac.h>
 #include <openssl/rand.h>
-
+#include "base58.h"
 // anonymous namespace with local implementation code (OpenSSL interaction)
 namespace {
 
@@ -363,6 +363,7 @@ void CKey::MakeNewKey(bool fCompressedIn) {
         RAND_bytes(vch, sizeof(vch));
     } while (!Check(vch));
     fValid = true;
+    assert(fCompressedIn == true);
     fCompressed = fCompressedIn;
 }
 
@@ -434,7 +435,7 @@ bool CKey::Load(CPrivKey &privkey, CPubKey &vchPubKey, bool fSkipCheck=false) {
     return true;
 }
 
-CKeyID CPubKey::GetID() const {
+CKeyID CPubKey::GetKeyID() const {
 	return CKeyID(Hash160(vch, vch + size()));
 }
 
@@ -548,7 +549,7 @@ bool CPubKey::Derive(CPubKey& pubkeyChild, unsigned char ccChild[32], unsigned i
 
 bool CExtKey::Derive(CExtKey &out, unsigned int nChild) const {
     out.nDepth = nDepth + 1;
-    CKeyID id = key.GetPubKey().GetID();
+    CKeyID id = key.GetPubKey().GetKeyID();
     memcpy(&out.vchFingerprint[0], &id, 4);
     out.nChild = nChild;
     return key.Derive(out.key, out.vchChainCode, nChild, vchChainCode);
@@ -619,8 +620,17 @@ void CExtPubKey::Decode(const unsigned char code[74]) {
 
 bool CExtPubKey::Derive(CExtPubKey &out, unsigned int nChild) const {
     out.nDepth = nDepth + 1;
-    CKeyID id = pubkey.GetID();
+    CKeyID id = pubkey.GetKeyID();
     memcpy(&out.vchFingerprint[0], &id, 4);
     out.nChild = nChild;
     return pubkey.Derive(out.pubkey, out.vchChainCode, nChild, vchChainCode);
+}
+
+string CPubKey::ToString() const {
+	return HexStr(begin(),end());
+
+}
+
+string CKeyID::ToAddress() const {
+	return CSoyPayAddress(*this).ToString();
 }

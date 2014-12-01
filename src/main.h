@@ -7,14 +7,14 @@
 #define BITCOIN_MAIN_H
 
 #if defined(HAVE_CONFIG_H)
-#include "bitcoin-config.h"
+#include "soypay-config.h"
 #endif
 
 #include "bignum.h"
 #include "chainparams.h"
 #include "core.h"
 #include "net.h"
-#include "script.h"
+//#include "script.h"
 #include "sync.h"
 #include "txmempool.h"
 #include "uint256.h"
@@ -35,6 +35,8 @@ class CBloomFilter;
 class CInv;
 class CContractScript;
 
+/** the total blocks of burn fee need */
+static const unsigned int DEFAULT_BURN_BLOCK_SIZE = 500;
 /** The maximum allowed size for a serialized block, in bytes (network rule) */
 static const unsigned int MAX_BLOCK_SIZE = 1000000;
 /** Default for -blockmaxsize and -blockminsize, which control the range of sizes the mining code will create **/
@@ -86,7 +88,7 @@ static const unsigned char REJECT_INSUFFICIENTFEE = 0x42;
 static const unsigned char REJECT_CHECKPOINT = 0x43;
 static const unsigned char UPDATE_ACCOUNT_FAIL = 0X50;
 
-extern CScript COINBASE_FLAGS;
+//extern CScript COINBASE_FLAGS;
 extern CCriticalSection cs_main;
 extern CTxMemPool mempool;
 extern map<uint256, CBlockIndex*> mapBlockIndex;
@@ -118,7 +120,7 @@ void UnregisterWallet(CWalletInterface* pwalletIn);
 /** Unregister all wallets from core */
 void UnregisterAllWallets();
 /** Push an updated transaction to all registered wallets */
-void SyncWithWallets(const uint256 &hash, const CBaseTransaction *pBaseTx, const CBlock* pblock = NULL);
+void SyncWithWallets(const uint256 &hash, CBaseTransaction *pBaseTx, const CBlock* pblock = NULL);
 
 /** Register with a network node to receive its signals */
 void RegisterNodeSignals(CNodeSignals& nodeSignals);
@@ -165,6 +167,9 @@ bool IsInitialBlockDownload();
 string GetWarnings(string strFor);
 /** Retrieve a transaction (from memory pool, or from disk, if possible) */
 bool GetTransaction(std::shared_ptr<CBaseTransaction> &pBaseTx, const uint256 &hash);
+/** Retrieve a transaction high comfirmed in block*/
+int GetTxComfirmHigh(const uint256 &hash);
+
 /** Find the best known block, and make it the tip of the block chain */
 bool ActivateBestChain(CValidationState &state);
 int64_t GetBlockValue(int nHeight, int64_t nFees);
@@ -174,8 +179,7 @@ void UpdateTime(CBlockHeader& block, const CBlockIndex* pindexPrev);
 
 /** Create a new block index entry for a given block hash */
 CBlockIndex * InsertBlockIndex(uint256 hash);
-/** Verify a signature */
-bool VerifySignature(const CCoins& txFrom, const CTransaction& txTo, unsigned int nIn, unsigned int flags, int nHashType);
+
 /** Abort with a message */
 bool AbortNode(const string &msg);
 /** Get statistics from node state */
@@ -183,7 +187,7 @@ bool GetNodeStateStats(NodeId nodeid, CNodeStateStats &stats);
 /** Increase a node's misbehavior score. */
 void Misbehaving(NodeId nodeid, int howmuch);
 
-bool CheckSignScript(const vector<unsigned char> &accountId, const uint256& sighash,
+bool CheckSignScript(const CRegID &regId, const uint256& sighash,
 		const vector_unsigned_char &signatrue, CValidationState &state, CAccountViewCache &view);
 
 /** (try to) add transaction to memory pool **/
@@ -307,7 +311,7 @@ public:
 
         // Write index header
         unsigned int nSize = fileout.GetSerializeSize(*this);
-        fileout << FLATDATA(Params().MessageStart()) << nSize;
+        fileout << FLATDATA(SysCfg().MessageStart()) << nSize;
 
         // Write undo data
         long fileOutPos = ftell(fileout);
@@ -531,10 +535,10 @@ bool ReadBlockFromDisk(CBlock& block, const CBlockIndex* pindex);
  *  In case pfClean is provided, operation will try to be tolerant about errors, and *pfClean
  *  will be true if no problems were found. Otherwise, the return value will be false in case
  *  of problems. Note that in any case, coins may be modified. */
-bool DisconnectBlock(CBlock& block, CValidationState& state, CAccountViewCache &view, CBlockIndex* pindex, CTransactionCache &txCache, CContractScriptCache &scriptCache, bool* pfClean = NULL);
+bool DisconnectBlock(CBlock& block, CValidationState& state, CAccountViewCache &view, CBlockIndex* pindex, CTransactionCache &txCache, CScriptDBViewCache &scriptCache, bool* pfClean = NULL);
 
 // Apply the effects of this block (with given index) on the UTXO set represented by coins
-bool ConnectBlock(CBlock& block, CValidationState& state, CAccountViewCache &view, CBlockIndex* pindex, CTransactionCache &txCache, CContractScriptCache &scriptCache, bool fJustCheck = false);
+bool ConnectBlock(CBlock& block, CValidationState& state, CAccountViewCache &view, CBlockIndex* pindex, CTransactionCache &txCache, CScriptDBViewCache &scriptCache, bool fJustCheck = false);
 
 // Add this block to the block index, and if necessary, switch the active block chain to this
 bool AddToBlockIndex(CBlock& block, CValidationState& state, const CDiskBlockPos& pos);
@@ -547,6 +551,12 @@ bool CheckBlockProofWorkWithCoinDay(const CBlock& block, CValidationState& state
 // Store block on disk
 // if dbp is provided, the file is known to already reside on disk
 bool AcceptBlock(CBlock& block, CValidationState& state, CDiskBlockPos* dbp = NULL);
+
+//disconnect block for test
+bool DisconnectBlockFromTip(CValidationState &state);
+
+//get tx operate account log
+bool GetTxOperLog(const uint256 &txHash, vector<CAccountOperLog> &vAccountOperLog);
 
 class CBlockFileInfo
 {
@@ -658,6 +668,9 @@ public:
     // Verification status of this block. See enum BlockStatus
     unsigned int nStatus;
 
+    //the block's fee
+    uint64_t nblockfee;
+
     // block header
     int nVersion;
     uint256 hashMerkleRoot;
@@ -682,6 +695,7 @@ public:
         nChainTx = 0;
         nStatus = 0;
         nSequenceId = 0;
+        nblockfee = 0; //add the block's fee
 
         nVersion       = 0;
         hashMerkleRoot = 0;
@@ -691,7 +705,7 @@ public:
         vSignature.clear();
     }
 
-    CBlockIndex(CBlockHeader& block)
+    CBlockIndex(CBlock& block)
     {
         phashBlock = NULL;
         pprev = NULL;
@@ -704,6 +718,7 @@ public:
         nChainTx = 0;
         nStatus = 0;
         nSequenceId = 0;
+        nblockfee = block.GetFee(); //add the block's fee
 
         nVersion       = block.nVersion;
         hashMerkleRoot = block.hashMerkleRoot;
@@ -745,6 +760,10 @@ public:
         block.vSignature     = vSignature;
         return block;
     }
+
+    int64_t GetBlockFee() const {
+    		return nblockfee;
+    	}
 
     uint256 GetBlockHash() const
     {
@@ -830,6 +849,7 @@ public:
         if (!(nType & SER_GETHASH))
             READWRITE(VARINT(nVersion));
 
+    	READWRITE(nblockfee);
         READWRITE(VARINT(nHeight));
         READWRITE(VARINT(nStatus));
         READWRITE(VARINT(nTx));
@@ -1022,16 +1042,11 @@ extern CScriptDB *pScriptDB;
 /** tx cache */
 extern CTransactionCache *pTxCacheTip;
 
-/** contract script cache */
-extern CContractScriptCache *pContractScriptTip;
+/** contract script data cache */
+extern CScriptDBViewCache *pScriptDBTip;
 
 //extern set<uint256> setTxHashCache;
 //extern map<uint256, set<uint256> > mapTxHashCacheByPrev;
-
-static const int64_t nTargetTimespan = 30 * 60;
-const int64_t nTargetSpacing = 10 * 60;
-const int64_t nInterval = nTargetTimespan / nTargetSpacing;
-const int64_t nMaxCoinDay = 30 * 24 * 60 * 60;
 
 //extern map<string, CContractScript> mapScript;
 
@@ -1077,11 +1092,11 @@ public:
 
 class CWalletInterface {
 protected:
-    virtual void SyncTransaction(const uint256 &hash, const CBaseTransaction *pBaseTx, const CBlock *pblock) =0;
-    virtual void EraseFromWallet(const uint256 &hash) =0;
+    virtual void SyncTransaction(const uint256 &hash, CBaseTransaction *pBaseTx, const CBlock *pblock) =0;
+//    virtual void EraseFromWallet(const uint256 &hash) =0;
     virtual void SetBestChain(const CBlockLocator &locator) =0;
     virtual void UpdatedTransaction(const uint256 &hash) =0;
-    virtual void Inventory(const uint256 &hash) =0;
+//    virtual void Inventory(const uint256 &hash) =0;
     virtual void ResendWalletTransactions() =0;
     friend void ::RegisterWallet(CWalletInterface*);
     friend void ::UnregisterWallet(CWalletInterface*);

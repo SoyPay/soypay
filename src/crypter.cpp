@@ -4,7 +4,7 @@
 
 #include "crypter.h"
 
-#include "script.h"
+//#include "script.h"
 
 #include <string>
 #include <vector>
@@ -203,7 +203,7 @@ bool CCryptoKeyStore::AddCryptedKey(const CPubKey &vchPubKey, const vector<unsig
         if (!SetCrypted())
             return false;
 
-        mapCryptedKeys[vchPubKey.GetID()] = make_pair(vchPubKey, vchCryptedSecret);
+        mapCryptedKeys[vchPubKey.GetKeyID()] = make_pair(vchPubKey, vchCryptedSecret);
     }
     return true;
 }
@@ -212,22 +212,23 @@ bool CCryptoKeyStore::GetKey(const CKeyID &address, CKey& keyOut) const
 {
     {
         LOCK(cs_KeyStore);
-        if (!IsCrypted())
-            return CBasicKeyStore::GetKey(address, keyOut);
 
-        CryptedKeyMap::const_iterator mi = mapCryptedKeys.find(address);
-        if (mi != mapCryptedKeys.end())
-        {
-            const CPubKey &vchPubKey = (*mi).second.first;
-            const vector<unsigned char> &vchCryptedSecret = (*mi).second.second;
-            CKeyingMaterial vchSecret;
-            if (!DecryptSecret(vMasterKey, vchCryptedSecret, vchPubKey.GetHash(), vchSecret))
-                return false;
-            if (vchSecret.size() != 32)
-                return false;
-            keyOut.Set(vchSecret.begin(), vchSecret.end(), vchPubKey.IsCompressed());
-            return true;
-        }
+//        if (!IsCrypted())
+//            return CBasicKeyStore::GetKey(address, keyOut);
+
+//        CryptedKeyMap::const_iterator mi = mapCryptedKeys.find(address);
+//        if (mi != mapCryptedKeys.end())
+//        {
+//            const CPubKey &vchPubKey = (*mi).second.first;
+//            const vector<unsigned char> &vchCryptedSecret = (*mi).second.second;
+//            CKeyingMaterial vchSecret;
+//            if (!DecryptSecret(vMasterKey, vchCryptedSecret, vchPubKey.GetHash(), vchSecret))
+//                return false;
+//            if (vchSecret.size() != 32)
+//                return false;
+//            keyOut.Set(vchSecret.begin(), vchSecret.end(), vchPubKey.IsCompressed());
+//            return true;
+//        }
     }
     return false;
 }
