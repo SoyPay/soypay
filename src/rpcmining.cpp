@@ -3,16 +3,32 @@
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include "rpcserver.h"
+#include <boost/foreach.hpp>
+#include <algorithm>
+#include <cassert>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
 #include "chainparams.h"
+#include "core.h"
 #include "init.h"
-#include "net.h"
 #include "main.h"
 #include "miner.h"
-#ifdef ENABLE_WALLET
+//#include "net.h"
+#include "rpcprotocol.h"
+#include "rpcserver.h"
+#include "serialize.h"
+#include "sync.h"
+#include "txmempool.h"
+#include "uint256.h"
+#include "util.h"
+#include "version.h"
+
+
 #include "db.h"
 #include "wallet.h"
-#endif
+
 #include <stdint.h>
 
 #include "json/json_spirit_utils.h"
@@ -21,7 +37,7 @@
 using namespace json_spirit;
 using namespace std;
 
-#ifdef ENABLE_WALLET
+
 // Key used by getwork miners.
 // Allocated in InitRPCMining, free'd in ShutdownRPCMining
 //static CReserveKey* pMiningKey = NULL;
@@ -44,14 +60,7 @@ void ShutdownRPCMining()
 //
 //    delete pMiningKey; pMiningKey = NULL;
 }
-#else
-void InitRPCMining()
-{
-}
-void ShutdownRPCMining()
-{
-}
-#endif
+
 
 // Return average network hashes per second based on the last 'lookup' blocks,
 // or from the last difficulty change if 'lookup' is nonpositive.
@@ -114,7 +123,7 @@ Value getnetworkhashps(const Array& params, bool fHelp)
     return GetNetworkHashPS(params.size() > 0 ? params[0].get_int() : 120, params.size() > 1 ? params[1].get_int() : -1);
 }
 
-#ifdef ENABLE_WALLET
+
 Value getgenerate(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() != 0)
@@ -207,7 +216,8 @@ Value setgenerate(const Array& params, bool fHelp)
     }
     else // Not -regtest: start generate thread, return immediately
     {
-    	SysCfg().SoftSetArgCover("-gen", fGenerate ? "1" : "0");
+    	SysCfg().SoftSetArgCover("-gen", fGenerate ?
+    			"1" : "0");
     	SysCfg().SoftSetArgCover("-genproclimit", itostr(nGenProcLimit));
         GenerateBitcoins(fGenerate, pwalletMain, nGenProcLimit);
     }
@@ -233,7 +243,7 @@ Value gethashespersec(const Array& params, bool fHelp)
         return (int64_t)0;
     return (int64_t)dHashesPerSec;
 }
-#endif
+
 
 
 Value getmininginfo(const Array& params, bool fHelp)
@@ -403,41 +413,48 @@ Value getwork(const Array& params, bool fHelp)
 #endif
 
 
-//Value submitblock(const Array& params, bool fHelp)
-//{
-//    if (fHelp || params.size() < 1 || params.size() > 2)
-//        throw runtime_error(
-//            "submitblock \"hexdata\" ( \"jsonparametersobject\" )\n"
-//            "\nAttempts to submit new block to network.\n"
-//            "The 'jsonparametersobject' parameter is currently ignored.\n"
-//            "See https://en.bitcoin.it/wiki/BIP_0022 for full specification.\n"
-//
-//            "\nArguments\n"
-//            "1. \"hexdata\"    (string, required) the hex-encoded block data to submit\n"
-//            "2. \"jsonparametersobject\"     (string, optional) object of optional parameters\n"
-//            "    {\n"
-//            "      \"workid\" : \"id\"    (string, optional) if the server provided a workid, it MUST be included with submissions\n"
-//            "    }\n"
-//            "\nResult:\n"
-//            "\nExamples:\n"
-//            + HelpExampleCli("submitblock", "\"mydata\"")
-//            + HelpExampleRpc("submitblock", "\"mydata\"")
-//        );
-//
-//    vector<unsigned char> blockData(ParseHex(params[0].get_str()));
-//    CDataStream ssBlock(blockData, SER_NETWORK, PROTOCOL_VERSION);
-//    CBlock pblock;
-//    try {
-//        ssBlock >> pblock;
-//    }
-//    catch (std::exception &e) {
-//        throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "Block decode failed");
-//    }
-//
-//    CValidationState state;
-//    bool fAccepted = ProcessBlock(state, NULL, &pblock);
-//    if (!fAccepted)
-//        return "rejected"; // TODO: report validation state
-//
-//    return Value::null;
-//}
+Value submitblock(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > 2)
+        throw runtime_error(
+            "submitblock \"hexdata\" ( \"jsonparametersobject\" )\n"
+            "\nAttempts to submit new block to network.\n"
+            "The 'jsonparametersobject' parameter is currently ignored.\n"
+            "See https://en.bitcoin.it/wiki/BIP_0022 for full specification.\n"
+
+            "\nArguments\n"
+            "1. \"hexdata\"    (string, required) the hex-encoded block data to submit\n"
+            "2. \"jsonparametersobject\"     (string, optional) object of optional parameters\n"
+            "    {\n"
+            "      \"workid\" : \"id\"    (string, optional) if the server provided a workid, it MUST be included with submissions\n"
+            "    }\n"
+            "\nResult:\n"
+            "\nExamples:\n"
+            + HelpExampleCli("submitblock", "\"mydata\"")
+            + HelpExampleRpc("submitblock", "\"mydata\"")
+        );
+
+    vector<unsigned char> blockData(ParseHex(params[0].get_str()));
+    CDataStream ssBlock(blockData, SER_NETWORK, PROTOCOL_VERSION);
+    CBlock pblock;
+    try {
+        ssBlock >> pblock;
+    }
+    catch (std::exception &e) {
+        throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "Block decode failed");
+    }
+
+    CValidationState state;
+    bool fAccepted = ProcessBlock(state, NULL, &pblock);
+    Object obj;
+	if (!fAccepted) {
+		obj.push_back(Pair("status", "rejected"));
+		obj.push_back(Pair("reject code", state.GetRejectCode()));
+		obj.push_back(Pair("info", state.GetRejectReason()));
+	} else {
+
+		obj.push_back(Pair("status", "OK"));
+		obj.push_back(Pair("hash", pblock.GetHash().ToString()));
+	}
+	return obj;
+}

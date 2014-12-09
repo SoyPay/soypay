@@ -10,10 +10,10 @@
 #include "netbase.h"
 #include "rpcserver.h"
 #include "util.h"
-#ifdef ENABLE_WALLET
+
 #include "wallet.h"
 #include "walletdb.h"
-#endif
+
 
 #include <stdint.h>
 
@@ -34,7 +34,7 @@ Value getbalance(const Array& params, bool fHelp)
 				"\nResult:\n"    + HelpExampleCli("getbalance", "")
 	            + HelpExampleRpc("getbalance", ""));
 	 Object obj;
-    obj.push_back(Pair("balance",       ValueFromAmount(pwalletMain->GetBalance(chainActive.Tip()->nHeight))));
+    obj.push_back(Pair("balance",       ValueFromAmount(pwalletMain->GetRawBalance(chainActive.Tip()->nHeight))));
     return obj;
 }
 Value getinfo(const Array& params, bool fHelp)
@@ -76,7 +76,7 @@ Value getinfo(const Array& params, bool fHelp)
 
     if (pwalletMain) {
         obj.push_back(Pair("walletversion", pwalletMain->GetVersion()));
-        obj.push_back(Pair("balance",       ValueFromAmount(pwalletMain->GetBalance(chainActive.Tip()->nHeight))));
+        obj.push_back(Pair("balance",       ValueFromAmount(pwalletMain->GetRawBalance(chainActive.Tip()->nHeight))));
     }
     static const string name[] = {"MAIN", "TESTNET", "REGTEST"};
 
@@ -92,6 +92,9 @@ Value getinfo(const Array& params, bool fHelp)
 	 obj.push_back(Pair("paytxfee",      ValueFromAmount(nTransactionFee)));
 
     obj.push_back(Pair("relayfee",      ValueFromAmount(CTransaction::nMinRelayTxFee)));
+    obj.push_back(Pair("data directory",GetDataDir().string().c_str()));
+    obj.push_back(Pair("block high",    chainActive.Tip()->nHeight));
+    obj.push_back(Pair("tip block hash",chainActive.Tip()->GetBlockHash().ToString()));
     obj.push_back(Pair("errors",        GetWarnings("statusbar")));
     return obj;
 }
@@ -115,6 +118,15 @@ public:
 
 };
 
+
+static  bool GetKeyId(string const &addr,CKeyID &KeyId) {
+	if (!CRegID::GetKeyID(addr, KeyId)) {
+		KeyId=CKeyID(addr);
+		if (KeyId.IsEmpty())
+		return false;
+	}
+	return true;
+};
 
 Value verifymessage(const Array& params, bool fHelp)
 {
@@ -143,12 +155,8 @@ Value verifymessage(const Array& params, bool fHelp)
     string strSign     = params[1].get_str();
     string strMessage  = params[2].get_str();
 
-    CSoyPayAddress addr(strAddress);
-    if (!addr.IsValid())
-        throw JSONRPCError(RPC_TYPE_ERROR, "Invalid address");
-
     CKeyID keyID;
-    if (!addr.GetKeyID(keyID))
+    if (!GetKeyId(strAddress,keyID))
         throw JSONRPCError(RPC_TYPE_ERROR, "Address does not refer to key");
 
     bool fInvalid = false;

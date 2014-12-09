@@ -9,12 +9,12 @@
 #include "main.h"
 #include "tx.h"
 #include "net.h"
-#ifdef ENABLE_WALLET
+
 #include "wallet.h"
-#endif
+
 //////////////////////////////////////////////////////////////////////////////
 //
-// BitcoinMiner
+// SoyPayMiner
 //
 
 int static FormatHashBlocks(void* pbuffer, unsigned int len) {
@@ -370,7 +370,7 @@ void FormatHashBuffers(CBlock* pblock, char* pmidstate, char* pdata, char* phash
 	memcpy(phash1, &tmp.hash1, 64);
 }
 
-#ifdef ENABLE_WALLET
+
 //////////////////////////////////////////////////////////////////////////////
 //
 // Internal miner
@@ -487,12 +487,12 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 		}
 
 		CAccountViewCache accView(*pAccountViewTip, true);
-		CTransactionCache txCacheTemp(*pTxCacheTip);
-		CScriptDBViewCache contractScriptTemp(*pScriptDBTip);
+		CTransactionDBCache txCacheTemp(*pTxCacheTip, true);
+		CScriptDBViewCache contractScriptTemp(*pScriptDBTip, true);
 		{
 			for (unsigned int i = 1; i < pBlock->vptx.size(); i++) {
 				shared_ptr<CBaseTransaction> pBaseTx = pBlock->vptx[i];
-				if (pTxCacheTip->IsContainTx(pBaseTx->GetHash())) {
+				if (txCacheTemp.IsContainTx(pBaseTx->GetHash())) {
 					LogPrint("INFO","CreatePosTx duplicate tx\n");
 					mempool.mapTx.erase(pBaseTx->GetHash());
 					return false;
@@ -608,7 +608,7 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 					prtx->nHeight = pPrevIndex->nHeight+1;
 					pBlock->hashMerkleRoot = pBlock->BuildMerkleTree();
 					vector<unsigned char> vRegId = regid.GetVec6();
-					printf("CreatePosTx addr = %s time:%s\r\n",item.keyID.ToAddress().c_str(),DateTimeStrFormat("%Y-%m-%dT%H:%M:%SZ", GetTime()).c_str());
+					printf("CreatePosTx addr = %s \nhight:%d time:%s\r\n\n",item.keyID.ToAddress().c_str(),prtx->nHeight,DateTimeStrFormat("%Y-%m-%d %H:%M:%S", GetTime()).c_str());
 					LogPrint("postx", "find pos tx hash succeed: \n"
 									  "   pos hash:%s \n"
 									  "adjust hash:%s \r\n", curhash.GetHex(), adjusthash.GetHex());
@@ -639,7 +639,7 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 	return false;
 }
 
-bool VerifyPosTx(const CBlockIndex *pPrevIndex, CAccountViewCache &accView, const CBlock *pBlock, uint64_t &nInterest, CTransactionCache &txCache, CScriptDBViewCache &scriptCache, bool bJustCheckSign) {
+bool VerifyPosTx(const CBlockIndex *pPrevIndex, CAccountViewCache &accView, const CBlock *pBlock, uint64_t &nInterest, CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache, bool bJustCheckSign) {
 
 	uint64_t maxNonce = SysCfg().GetArg("-blockmaxnonce", 10000); //cacul times
 
@@ -652,8 +652,8 @@ bool VerifyPosTx(const CBlockIndex *pPrevIndex, CAccountViewCache &accView, cons
 		LogPrint("ERROR", "hashMerkleRoot is error\r\n");
 		return false;
 	}
-	CAccountViewCache view(accView);
-	CScriptDBViewCache scriptDBView(scriptCache);
+	CAccountViewCache view(accView, true);
+	CScriptDBViewCache scriptDBView(scriptCache, true);
 	CAccount account;
 	{
 		CRewardTransaction *prtx = (CRewardTransaction *) pBlock->vptx[0].get();
@@ -661,7 +661,7 @@ bool VerifyPosTx(const CBlockIndex *pPrevIndex, CAccountViewCache &accView, cons
 		{
 			for (unsigned int i = 1; i < pBlock->vptx.size(); i++) {
 				shared_ptr<CBaseTransaction> pBaseTx = pBlock->vptx[i];
-				if (pTxCacheTip->IsContainTx(pBaseTx->GetHash())) {
+				if (txCache.IsContainTx(pBaseTx->GetHash())) {
 					LogPrint("ERROR","VerifyPosTx duplicate tx\n");
 					return false;
 				}
@@ -763,7 +763,7 @@ bool VerifyPosTx(const CBlockIndex *pPrevIndex, CAccountViewCache &accView, cons
 			postxinfo.nVersion, postxinfo.hashPrevBlock.GetHex(), postxinfo.hashMerkleRoot.GetHex(), postxinfo.nValues,
 			postxinfo.nTime, postxinfo.nNonce, pBlock->GetHash().GetHex());
 	if (curhash > adjusthash) {
-		LogPrint("INFO", "Account ProofOfWorkLimit error: \n"
+		LogPrint("ERROR", "Account ProofOfWorkLimit error: \n"
 				           "   pos hash:%s \n"
 				           "adjust hash:%s\r\n", curhash.GetHex(), adjusthash.GetHex());
 		return false;
@@ -824,9 +824,9 @@ CBlockTemplate* CreateNewBlock() {
 
 		TxPriorityCompare comparer(fSortedByFee);
 		make_heap(vecPriority.begin(), vecPriority.end(), comparer);
-		CAccountViewCache accviewtemp(accview);
-		CTransactionCache txCacheTemp(*pTxCacheTip);
-		CScriptDBViewCache contractScriptTemp(*pScriptDBTip);
+		CAccountViewCache accviewtemp(accview, true);
+		CTransactionDBCache txCacheTemp(*pTxCacheTip, true);
+		CScriptDBViewCache contractScriptTemp(*pScriptDBTip, true);
 
 		while (!vecPriority.empty()) {
 			// Take highest priority transaction off the priority queue:
@@ -1050,8 +1050,8 @@ void GenerateBitcoins(bool fGenerate, CWallet* pwallet, int nThreads) {
 	minerThreads = new boost::thread_group();
 	for (int i = 0; i < nThreads; i++)
 		minerThreads->create_thread(boost::bind(&SoypayMiner, pwallet));
-	minerThreads->join_all();
+//	minerThreads->join_all();
 }
 
-#endif
+
 

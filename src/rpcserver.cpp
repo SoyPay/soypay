@@ -11,9 +11,8 @@
 #include "main.h"
 #include "ui_interface.h"
 #include "util.h"
-#ifdef ENABLE_WALLET
 #include "wallet.h"
-#endif
+
 
 #include <boost/algorithm/string.hpp>
 #include <boost/asio.hpp>
@@ -81,12 +80,13 @@ void RPCTypeCheck(const Object& o,
     }
 }
 
-int64_t AmountFromValue(const Value& value)
+
+int64_t AmountToRawValue(const Value& value)
 {
     double dAmount = value.get_real();
-    if (dAmount <= 0.0 || dAmount > 21000000.0)
+    if (dAmount <= 0.0 || dAmount > 210000000.0 * COIN)
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount");
-    int64_t nAmount = roundint64(dAmount * COIN);
+    int64_t nAmount = roundint64(dAmount);
     if (!MoneyRange(nAmount))
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount");
     return nAmount;
@@ -154,11 +154,9 @@ string CRPCTable::help(string strCommand) const
             continue;
         if (strCommand != "" && strMethod != strCommand)
             continue;
-#ifdef ENABLE_WALLET
+
         if (pcmd->reqWallet && !pwalletMain)
             continue;
-#endif
-
         try
         {
             Array params;
@@ -208,10 +206,10 @@ Value stop(const Array& params, bool fHelp)
     if (fHelp || params.size() > 1)
         throw runtime_error(
             "stop\n"
-            "\nStop Bitcoin server.");
+            "\nStop Soypayd server.");
     // Shutdown will take long enough that the response should get back
     StartShutdown();
-    return "Bitcoin server stopping";
+    return "Soypayd server stopping";
 }
 
 
@@ -219,7 +217,7 @@ Value stop(const Array& params, bool fHelp)
 //
 // Call Table
 //
-
+extern Value restclient(const Array& params, bool fHelp);
 extern Value gettxoperationlog(const Array& params, bool fHelp);
 static const CRPCCommand vRPCCommands[] =
 { //  name                      actor (function)         okSafeMode threadSafe reqWallet
@@ -252,6 +250,8 @@ static const CRPCCommand vRPCCommands[] =
     /* Mining */
     { "getmininginfo",          &getmininginfo,          true,      false,      false },
     { "getnetworkhashps",       &getnetworkhashps,       true,      false,      false },
+    { "submitblock",      		&submitblock,       	 true,      false,      false },
+
 
     /* Raw transactions */
  //   { "createrawtransaction",   &createrawtransaction,   false,     false,      false },
@@ -280,8 +280,8 @@ static const CRPCCommand vRPCCommands[] =
     { "listaddr",               &listaddr,       	     true,      false,      true },
     { "listtx",                 &listtx,       	         true,      false,      true },
     { "registeraccounttx",      &registeraccounttx,      true,      false,      true },
-	{ "createnormaltx",         &createnormaltx,       	 true,      false,      true },
-	{ "createcontracttx",       &createcontracttx,        true,      false,      true },
+//	{ "createnormaltx",         &createnormaltx,       	 true,      false,      true },
+	{ "createcontracttx",       &createcontracttx,       true,      false,      true },
 	{ "signcontracttx",         &signcontracttx,       	 true,      false,      true },
 	{ "createfreezetx",         &createfreezetx,       	 true,      false,      true },
 	{ "registerscripttx",       &registerscripttx,       true,      false,      true },
@@ -304,9 +304,11 @@ static const CRPCCommand vRPCCommands[] =
 
 
 //for test code
-	{ "gettxoperationlog",      &gettxoperationlog,        false,      false,      false },
+	{ "gettxoperationlog",      &gettxoperationlog,      false,      false,     false },
     { "disconnectblock",        &disconnectblock,        true,      false,      true },
+    { "restclient",             &restclient,             true,      false,      false },
     { "reloadtxcache",          &reloadtxcache,          true,      false,      true },
+    { "listsetblockindexvalid",  &listsetblockindexvalid, true,     false,      false},
 };
 
 CRPCTable::CRPCTable()
@@ -839,10 +841,9 @@ json_spirit::Value CRPCTable::execute(const string &strMethod, const json_spirit
     const CRPCCommand *pcmd = tableRPC[strMethod];
     if (!pcmd)
         throw JSONRPCError(RPC_METHOD_NOT_FOUND, "Method not found");
-#ifdef ENABLE_WALLET
+
     if (pcmd->reqWallet && !pwalletMain)
         throw JSONRPCError(RPC_METHOD_NOT_FOUND, "Method not found (disabled)");
-#endif
 
     // Observe safe mode
     string strWarning = GetWarnings("rpc");

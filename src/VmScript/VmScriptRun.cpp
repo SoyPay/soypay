@@ -163,6 +163,8 @@ bool CVmScriptRun::CheckOperate(const vector<CVmOperate> &listoperate) const {
 		}
 		vector<unsigned char> accountid(it.accountid, it.accountid + sizeof(it.accountid));
 		CRegID regId(accountid);
+		if(regId.IsEmpty() || regId.getKeyID( *m_view) == uint160(0))
+			return false;
 		/// if account script id ,the it.opeatortype must be ADD_FREE or MINUS_FREE
 		if (m_ScriptDBTip->HaveScript(regId) && it.opeatortype != ADD_FREE && it.opeatortype != MINUS_FREE) {
 			return false;
@@ -234,11 +236,11 @@ bool CVmScriptRun::OpeatorAccount(const vector<CVmOperate>& listoperate, CAccoun
 
 
 //		LogPrint("vm", "account id:%s\r\n", HexStr(accountid).c_str());
-//		LogPrint("vm", "muls account:%s\r\n", vmAccount.get()->ToString().c_str());
+//		LogPrint("vm", "befer account:%s\r\n", vmAccount.get()->ToString().c_str());
 //		LogPrint("vm", "fund:%s\r\n", fund.ToString().c_str());
 		bool ret = vmAccount.get()->OperateAccount((OperType)it.opeatortype,fund,height);
 
-//		LogPrint("vm", "after muls account:%s\r\n", vmAccount.get()->ToString().c_str());
+//		LogPrint("vm", "after account:%s\r\n", vmAccount.get()->ToString().c_str());
 		if (!ret) {
 			return false;
 		}
@@ -252,6 +254,16 @@ const CRegID& CVmScriptRun::GetScriptRegID()
 {
 	CContractTransaction* tx = static_cast<CContractTransaction*>(listTx.get());
 	return boost::get<CRegID>(tx->scriptRegId);
+}
+const vector<CUserID>& CVmScriptRun::GetTxAccount()
+{
+	CContractTransaction* tx = static_cast<CContractTransaction*>(listTx.get());
+		return tx->vAccountRegId;
+}
+const vector<unsigned char>& CVmScriptRun::GetTxContact()
+{
+	CContractTransaction* tx = static_cast<CContractTransaction*>(listTx.get());
+		return tx->vContract;
 }
 int CVmScriptRun::GetComfirHeight()
 {

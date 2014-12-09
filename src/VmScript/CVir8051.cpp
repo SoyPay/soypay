@@ -653,7 +653,7 @@ static RET_DEFINE ExQueryAccountBalanceFunc(unsigned char * ipara,void * pVmScri
 	if (!pVmScript->GetCatchView()->GetAccount(userid, aAccount)) {
 		flag = false;
 	}
-	uint64_t nbalance = aAccount.GetBalance(pVmScript->GetComfirHeight());
+	uint64_t nbalance = aAccount.GetRawBalance(pVmScript->GetComfirHeight());
 	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
     CDataStream tep(SER_DISK, CLIENT_VERSION);
     tep << nbalance;
@@ -1134,6 +1134,46 @@ static RET_DEFINE ExGetScriptDataFunc(unsigned char * ipara,void * pVmScript)
 	return std::make_tuple (flag, tem);
 
 }
+static RET_DEFINE ExGetScriptIDFunc(unsigned char * ipara,void * pVmScript)
+{
+	CVmScriptRun *pVmScriptRun = (CVmScriptRun *)pVmScript;
+//	vector<std::shared_ptr < vector<unsigned char> > > retdata;
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 1);
+
+	vector_unsigned_char scriptid = pVmScriptRun->GetScriptRegID().GetVec6();
+
+	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+   (*tem.get()).push_back(scriptid);
+
+	return std::make_tuple (true, tem);
+}
+static RET_DEFINE ExGetCurTxAccountFunc(unsigned char * ipara,void * pVmScript)
+{
+	CVmScriptRun *pVmScriptRun = (CVmScriptRun *)pVmScript;
+	vector<CUserID> regid =pVmScriptRun->GetTxAccount();
+
+	vector<unsigned char> item;
+	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+		for (auto& it : regid) {
+			vector<unsigned char> id = boost::get<CRegID>(it).GetVec6();
+			item.insert(item.end(), id.begin(), id.end());
+		}
+
+		(*tem.get()).push_back(item);
+		return std::make_tuple (true, tem);
+}
+static RET_DEFINE ExGetCurTxContactFunc(unsigned char * ipara,void * pVmScript)
+{
+	CVmScriptRun *pVmScriptRun = (CVmScriptRun *)pVmScript;
+	vector<unsigned char> contact =pVmScriptRun->GetTxContact();
+
+	vector<unsigned char> item;
+	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+
+	(*tem.get()).push_back(contact);
+	return std::make_tuple (true, tem);
+}
 enum CALL_API_FUN {
 	COMP_FUNC = 0,            //!< COMP_FUNC
 	MULL_MONEY ,              //!< MULL_MONEY
@@ -1171,6 +1211,9 @@ enum CALL_API_FUN {
 	WRITEOUTPUT_FUNC,     //!<WRITEOUTPUT_FUNC
 
 	GETSCRIPTDATA_FUNC,		  //!<GETSCRIPTDATA_FUNC
+	GETSCRIPTID_FUNC,		//!<GETSCRIPTID_FUNC
+	GETCURTXACCOUNT_FUNC,//!<GETCURTXACCOUNT_FUNC
+	GETCURTXCONTACT_FUNC,		 //!<GETCURTXCONTACT_FUNC
 };
 
 const static struct __MapExterFun FunMap[] = { //
@@ -1207,6 +1250,10 @@ const static struct __MapExterFun FunMap[] = { //
 		{MODIFYDBVALUE_FUNC,ExModifyDataDBVavleFunc},
 		{WRITEOUTPUT_FUNC,ExWriteOutputFunc},
 		{GETSCRIPTDATA_FUNC,ExGetScriptDataFunc},
+		{GETSCRIPTID_FUNC,ExGetScriptIDFunc},
+		{GETCURTXACCOUNT_FUNC,ExGetCurTxAccountFunc	  },
+		{GETCURTXCONTACT_FUNC,ExGetCurTxContactFunc		},
+
 		};
 
 RET_DEFINE CallExternalFunc(INT16U method, unsigned char *ipara,CVmScriptRun *pVmScriptRun) {
@@ -1247,10 +1294,10 @@ int64_t CVir8051::run(uint64_t maxstep,CVmScriptRun *pVmScriptRun) {
 						pos += size + 2;
 					}
 				}
-				if(methodID == READDB_FUNC) {
-					LogPrint("vm","data1:%s\r\n",HexStr(ipara,ipara+totalsize));
-					LogPrint("INFO","data1:%s\r\n",HexStr(ipara,ipara+totalsize));
-				}
+//				if(methodID == READDB_FUNC) {
+//					LogPrint("vm","data1:%s\r\n",HexStr(ipara,ipara+totalsize));
+//					LogPrint("INFO","data1:%s\r\n",HexStr(ipara,ipara+totalsize));
+//				}
 			}
 		} else if (Sys.PC == 0x0008) {
 				INT8U result=GetExRam(0xEFFD);

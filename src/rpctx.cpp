@@ -31,18 +31,23 @@ using namespace boost;
 using namespace boost::assign;
 using namespace json_spirit;
 
-static boost::thread_group sThreadGroup;
-
 string RegIDToAddress(CUserID &userId) {
-	CAccountViewCache view(*pAccountViewTip, true);
-	CAccount acct;
-	if(!view.GetAccount(userId, acct)) {
-		CID id(userId);
-		return HexStr(id.GetID());
-	}
-	return CSoyPayAddress(acct.keyID).ToString();
+	CKeyID keid;
+	if(pAccountViewTip->GetKeyId(userId,keid))
+		{
+		 return keid.ToAddress();
+		}
+	return "can not get address";
 }
 
+static  bool GetKeyId(string const &addr,CKeyID &KeyId) {
+	if (!CRegID::GetKeyID(addr, KeyId)) {
+		KeyId=CKeyID(addr);
+		if (KeyId.IsEmpty())
+		return false;
+	}
+	return true;
+};
 Object TxToJSON(CBaseTransaction *pTx) {
 	Object result;
 	result.push_back(Pair("hash", pTx->GetHash().GetHex()));
@@ -51,9 +56,11 @@ Object TxToJSON(CBaseTransaction *pTx) {
 		CRegisterAccountTx *prtx = (CRegisterAccountTx *) pTx;
 		result.push_back(Pair("txtype", "RegisterAccTx"));
 		result.push_back(Pair("ver", prtx->nVersion));
-		result.push_back(Pair("addr", CSoyPayAddress(boost::get<CPubKey>(prtx->userId).GetKeyID()).ToString()));
+		result.push_back(Pair("addr", boost::get<CPubKey>(prtx->userId).GetKeyID().ToAddress()));
 		CID id(prtx->userId);
+		CID minerId(prtx->minerId);
 		result.push_back(Pair("pubkey", HexStr(id.GetID())));
+		result.push_back(Pair("miner_pubkey", HexStr(minerId.GetID())));
 		result.push_back(Pair("fees", prtx->llFees));
 		result.push_back(Pair("height", prtx->nValidHeight));
 		break;
@@ -124,6 +131,7 @@ Object TxToJSON(CBaseTransaction *pTx) {
 		result.push_back(Pair("script", HexStr(prtx->script)));
 		result.push_back(Pair("fees", prtx->llFees));
 		result.push_back(Pair("height", prtx->nValidHeight));
+		result.push_back(Pair("authorizate", prtx->aAuthorizate.ToJosnObj()));
 		break;
 	}
 	default:
@@ -181,14 +189,15 @@ Value registeraccounttx(const Array& params, bool fHelp) {
 
 
 
-	CSoyPayAddress address(params[0].get_str());
+	string addr = params[0].get_str();
 	uint64_t fee = params[1].get_uint64();
 	bool IsMiner = params[2].get_bool();
 
 	//get keyid
 	CKeyID keyid;
-	if (!address.GetKeyID(keyid)) {
-		throw runtime_error("in registeraccounttx :address err\n");
+   	if(!GetKeyId(addr,keyid))
+	{
+		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "in registeraccounttx :address err");
 	}
 
 	CRegisterAccountTx rtx;
@@ -204,7 +213,7 @@ Value registeraccounttx(const Array& params, bool fHelp) {
 		uint64_t balance = 0;
 		CUserID userId = keyid;
 		if (view.GetAccount(userId, account)) {
-			balance = account.GetBalance(chainActive.Tip()->nHeight);
+			balance = account.GetRawBalance(chainActive.Tip()->nHeight);
 		}
 
 		if (account.IsRegister()) {
@@ -226,10 +235,13 @@ Value registeraccounttx(const Array& params, bool fHelp) {
 			if (!pwalletMain->GetPubKey(keyid, MinerPKey, true)) {
 				throw JSONRPCError(RPC_WALLET_ERROR, " not find Miner key.");
 			}
+			rtx.minerId= MinerPKey;
 		}
-
+		else {
+			CNullID nullId;
+			rtx.minerId= nullId;
+		}
 		rtx.userId = pubkey;
-		rtx.MinerId=MinerPKey;
 		rtx.llFees = fee;
 		rtx.nValidHeight = chainActive.Tip()->nHeight;
 
@@ -239,121 +251,28 @@ Value registeraccounttx(const Array& params, bool fHelp) {
 		if (!key.Sign(rtx.SignatureHash(), rtx.signature)) {
 			throw JSONRPCError(RPC_WALLET_ERROR, "in registeraccounttx Error: Sign failed.");
 		}
-		if (!pwalletMain->CommitTransaction((CBaseTransaction *) &rtx)) {
-			throw JSONRPCError(RPC_WALLET_ERROR, "registeraccounttx Error: CommitTransaction failed.");
-		}
-	}
-	Object obj;
-	obj.push_back(Pair("txhash",rtx.GetHash().ToString()));
-	return obj;
-}
 
-//create a normal tx
-Value createnormaltx(const Array& params, bool fHelp) {
-	if (fHelp || params.size() != 5) {
-		string msg =
-				"createnormaltx nrequired \"send addr\" \"recv addr\" money fee height\n"
-						"\nsend money from one addr to another addr\n"
-						"\nArguments:\n"
-						"1.\"send addr\": (string)\n"
-						"2.\"recv addr\": (string)\n"
-						"3.money: (numeric) pay to recv addr\n"
-						"4.fee: (numeric) pay to miner\n"
-						"5.height: (numeric)valid  height\n"
-						"\nResult:\n"
-						"\"txhash\": (string)\n"
-						"\nExamples:\n"
-						+ HelpExampleCli("createnormaltx",
-								"5zQPcC1YpFMtwxiH787pSXanUECoGsxUq3KZieJxVG n2dha9w3bz2HPVQzoGKda3Cgt5p5Tgv6oj 20000000000 100000 1")
-						+ "\nAs json rpc call\n"
-						+ HelpExampleRpc("createnormaltx",
-								"5zQPcC1YpFMtwxiH787pSXanUECoGsxUq3KZieJxVG n2dha9w3bz2HPVQzoGKda3Cgt5p5Tgv6oj 20000000000 100000 1");
-		throw runtime_error(msg);
+
+
+
+//		if (!pwalletMain->CommitTransaction((CBaseTransaction *) &rtx)) {
+//			throw JSONRPCError(RPC_WALLET_ERROR, "registeraccounttx Error: CommitTransaction failed.");
+//		}
 	}
 
-	RPCTypeCheck(params, list_of(str_type)(str_type)(int_type)(int_type)(int_type));
 
-	//get addresss
-	CSoyPayAddress sendaddr(params[0].get_str());
-	CSoyPayAddress recvaddr(params[1].get_str());
-	uint64_t money = params[2].get_uint64();
-	uint64_t fee = params[3].get_uint64();
-	uint32_t nvalidheight = params[4].get_int();
-
-	if (money < CTransaction::nMinTxFee) {
-		throw runtime_error("in createnormaltx :money is smaller than nMinTxFee\n");
-	}
-	//get keyid
-	CKeyID Sendkeyid;
-	if (!sendaddr.GetKeyID(Sendkeyid)) {
-		throw runtime_error("in createnormaltx :send address err\n");
-	}
-	CKeyID recvkeyid;
-	if (!recvaddr.GetKeyID(recvkeyid)) {
-		throw runtime_error("in createnormaltx :recv address err\n");
-	}
-
-	assert(pwalletMain != NULL);
-	CTransaction tx;
-	{
-	//	LOCK2(cs_main, pwalletMain->cs_wallet);
-		EnsureWalletIsUnlocked();
-
-		//balance
-		CAccountViewCache view(*pAccountViewTip, true);
-		CAccount acct;
-
-		uint64_t balance = 0;
-		CUserID userId = Sendkeyid;
-		if (view.GetAccount(userId, acct)) {
-			balance = acct.GetBalance(chainActive.Tip()->nHeight);
-		}
-
-		if (!acct.IsRegister()) {
-			throw JSONRPCError(RPC_WALLET_ERROR, "in createnormaltx Error: Account is not registered.");
-		}
-
-		if (!pwalletMain->count(Sendkeyid)) {
-			throw JSONRPCError(RPC_WALLET_ERROR, "in createnormaltx Error: WALLET file is not correct.");
-		}
-
-		if (balance < fee || balance < money || balance < (money + fee)) {
-			throw JSONRPCError(RPC_WALLET_ERROR, "in createnormaltx Error: Account balance is insufficient.");
-		}
-
-		auto GetUserId = [&](const CKeyID &mkeyId)
+		std::tuple<bool,string> ret;
+		ret = pwalletMain->CommitTransaction((CBaseTransaction *) &rtx);
+		if(!std::get<0>(ret))
 		{
-			CAccount acct;
-			CUserID ret;
-			if (!view.GetAccount(CUserID(mkeyId), acct)) {
-				ret= acct.regID;
-			}
-			else{
-			ret = mkeyId;
-			}
-			return ret;
-		};
-
-		tx.srcUserId = GetUserId(Sendkeyid);
-		tx.desUserId = GetUserId(recvkeyid);
-		tx.llValues = money;
-		tx.llFees = fee;
-		tx.nValidHeight = nvalidheight;
-
-		CKey key;
-		pwalletMain->GetKey(Sendkeyid, key);
-		if (!key.Sign(tx.SignatureHash(), tx.signature)) {
-			throw JSONRPCError(RPC_WALLET_ERROR, "createnormaltx Error: Sign failed.");
+			throw JSONRPCError(RPC_WALLET_ERROR, "registeraccounttx Error:"+ std::get<1>(ret));
 		}
-		if (!pwalletMain->CommitTransaction((CBaseTransaction *) &tx)) {
-			throw JSONRPCError(RPC_WALLET_ERROR, "createnormaltx Error: CommitTransaction failed.");
-		}
-	}
-	Object obj;
-	obj.push_back(Pair("txhash",tx.GetHash().ToString()));
-	return obj;
-//	return tx.GetHash().ToString();
+		Object obj;
+		obj.push_back(Pair("hash", std::get<1>(ret)));
+		return obj;
+
 }
+
 
 //create a contract tx
 Value createcontracttx(const Array& params, bool fHelp) {
@@ -388,7 +307,8 @@ Value createcontracttx(const Array& params, bool fHelp) {
 	RPCTypeCheck(params, list_of(str_type)(array_type)(str_type)(int_type)(int_type));
 
 	//get addresss
-	vector<unsigned char> vscriptid = ParseHex(params[0].get_str());
+//	vector<unsigned char> vscriptid = ParseHex(params[0].get_str());
+	CRegID vscriptid(params[0].get_str()) ;
 	Array addr = params[1].get_array();
 	vector<unsigned char> vcontract = ParseHex(params[2].get_str());
 	uint64_t fee = params[3].get_uint64();
@@ -398,14 +318,14 @@ Value createcontracttx(const Array& params, bool fHelp) {
 		throw runtime_error("in createcontracttx :fee is smaller than nMinTxFee\n");
 	}
 
-	if (vscriptid.size() != SCRIPT_ID_SIZE) {
+	if (vscriptid.GetVec6().size()!= SCRIPT_ID_SIZE) {
 		throw runtime_error("in createcontracttx :vscriptid size is error!\n");
 	}
 
-
 	assert(pwalletMain != NULL);
 
-	CContractTransaction tx;
+//	CContractTransaction tx;
+	std::shared_ptr<CContractTransaction> tx = make_shared<CContractTransaction>();
 	{
 	//	LOCK2(cs_main, pwalletMain->cs_wallet);
 		EnsureWalletIsUnlocked();
@@ -414,10 +334,9 @@ Value createcontracttx(const Array& params, bool fHelp) {
 		CAccountViewCache view(*pAccountViewTip, true);
 		CAccount secureAcc;
 
-		vector<unsigned char> vscript;
-		if(!pScriptDBTip->HaveScript(CRegID(vscriptid)))
+		if(!pScriptDBTip->HaveScript(vscriptid))
 		{
-			throw runtime_error(tinyformat::format("createcontracttx :script id %s is not exist\n", HexStr(vscriptid)));
+			throw runtime_error(tinyformat::format("createcontracttx :script id %s is not exist\n", HexStr(vscriptid.GetVec6())));
 		}
 
 		auto GetUserId = [&](CKeyID &keyId)
@@ -433,19 +352,20 @@ Value createcontracttx(const Array& params, bool fHelp) {
 		vector<CUserID > vaccountid;
 
 		for (auto& item : addr) {
-			CSoyPayAddress tmpaddr(item.get_str());
 			CKeyID keyid;
-			if (!tmpaddr.GetKeyID(keyid)) {
+			if (!GetKeyId(item.get_str(),keyid)) {
 				throw runtime_error("in createcontracttx :address err\n");
 			}
+
 			vaccountid.push_back(CUserID(GetUserId(keyid)));
 		}
 
-		tx.scriptRegId = CRegID(vscriptid);
-		tx.vAccountRegId = vaccountid;
-		tx.llFees = fee;
-		tx.vContract = vcontract;
-		tx.nValidHeight = height;
+		tx.get()->scriptRegId = vscriptid;
+		tx.get()->vAccountRegId = vaccountid;
+		tx.get()->llFees = fee;
+		tx.get()->vContract = vcontract;
+		tx.get()->nValidHeight = chainActive.Tip()->nHeight;
+//		tx.nValidHeight = height;
 
 
 		//get keyid by accountid
@@ -459,27 +379,28 @@ Value createcontracttx(const Array& params, bool fHelp) {
 		CKey key;
 		pwalletMain->GetKey(keyid, key);
 		vector<unsigned char> signature;
-		if (!key.Sign(tx.SignatureHash(), signature)) {
+		if (!key.Sign(tx.get()->SignatureHash(), signature)) {
 			throw JSONRPCError(RPC_WALLET_ERROR, "createcontracttx Error: Sign failed.");
 		}
 
-		tx.vSignature.push_back(signature);
+		tx.get()->vSignature.push_back(signature);
 	}
-	if(tx.vSignature.size() == tx.vAccountRegId.size())
-	{
-		if (!pwalletMain->CommitTransaction((CBaseTransaction *) &tx)) {
-			throw JSONRPCError(RPC_WALLET_ERROR, "createcontracttx Error: CommitTransaction failed.");
+	if (tx.get()->vSignature.size() == tx.get()->vAccountRegId.size()) {
+		std::tuple<bool, string> ret;
+		ret = pwalletMain->CommitTransaction((CBaseTransaction *) tx.get());
+		if (!std::get<0>(ret)) {
+			throw JSONRPCError(RPC_WALLET_ERROR, "Error:" + std::get<1>(ret));
 		}
 		Object obj;
-		obj.push_back(Pair("txhash",tx.GetHash().ToString()));
+		obj.push_back(Pair("hash", std::get<1>(ret)));
 		return obj;
-	}
-	else
-	{
+	} else {
 		CDataStream ds(SER_DISK, CLIENT_VERSION);
-		ds << tx;
+		cout << "cont:" << tx.get()->ToString(*pAccountViewTip) << endl;
+		std::shared_ptr<CBaseTransaction> pBaseTx = tx->GetNewInstance();
+		ds << pBaseTx;
 		Object obj;
-		obj.push_back(Pair("RawTx",HexStr(ds.begin(),ds.end())));
+		obj.push_back(Pair("RawTx", HexStr(ds.begin(), ds.end())));
 		return obj;
 	}
 }
@@ -506,9 +427,11 @@ Value signcontracttx(const Array& params, bool fHelp) {
 	vector<unsigned char> vch(ParseHex(params[0].get_str()));
 	CDataStream stream(vch, SER_DISK, CLIENT_VERSION);
 
-	CContractTransaction tx;
-	stream >> tx;
+	std::shared_ptr<CBaseTransaction> pBaseTx; //= make_shared<CContractTransaction>();
+	stream >> pBaseTx;
 
+	std::shared_ptr<CContractTransaction> tx = make_shared<CContractTransaction>(pBaseTx.get());
+	cout << "sig:" << tx.get()->ToString(*pAccountViewTip) << endl;
 	assert(pwalletMain != NULL);
 	{
 		LOCK2(cs_main, pwalletMain->cs_wallet);
@@ -517,41 +440,41 @@ Value signcontracttx(const Array& params, bool fHelp) {
 		//balance
 		CAccountViewCache view(*pAccountViewTip, true);
 
-		if (tx.vAccountRegId.size() < 1 || tx.vSignature.size() >= tx.vAccountRegId.size()) {
+		if (tx.get()->vAccountRegId.size() < 1 || tx.get()->vSignature.size() >= tx.get()->vAccountRegId.size()) {
 			throw runtime_error("in signsecuretx :tx data err\n");
 		}
 
 		vector<unsigned char> vscript;
-		if (!pScriptDBTip->GetScript(boost::get<CRegID>(tx.scriptRegId), vscript)) {
-			CID id(tx.scriptRegId);
+		if (!pScriptDBTip->GetScript(boost::get<CRegID>(tx.get()->scriptRegId), vscript)) {
+			CID id(tx.get()->scriptRegId);
 			throw runtime_error(
 					tinyformat::format("createcontracttx :script id %s is not exist\n", HexStr(id.GetID())));
 		}
 
-		for (auto& item : tx.vAccountRegId) {
+		for (auto& item : tx.get()->vAccountRegId) {
 			CAccount account;
 			if (!pAccountViewTip->GetAccount(item, account)) {
 				CID id(item);
-				throw runtime_error(tinyformat::format("createcontracttx :account id %s is not exist\n", HexStr(id.GetID())));
+				throw runtime_error(
+						tinyformat::format("createcontracttx :account id %s is not exist\n", HexStr(id.GetID())));
 			}
 		}
 
-		CRegID accountid = boost::get<CRegID>(tx.vAccountRegId.at(tx.vSignature.size()));
+		CRegID accountid = boost::get<CRegID>(tx.get()->vAccountRegId.at(tx.get()->vSignature.size()));
 
 		if (!pwalletMain->count(accountid.getKeyID(*pAccountViewTip))) {
-			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY,"signcontracttx error: Not to my time!\r\n");
+			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "signcontracttx error: Not to my time!\r\n");
 		}
 
 		//verify sig
-		for (int ii = 0; ii < tx.vSignature.size(); ii++) {
+		for (int ii = 0; ii < tx.get()->vSignature.size(); ii++) {
 			CAccount account;
-			if (!view.GetAccount(tx.vAccountRegId.at(ii), account)) {
-				CID id(tx.vAccountRegId.at(ii));
-				throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY,
-						string("unregister RegID: ") + HexStr(id.GetID()));
+			if (!view.GetAccount(tx.get()->vAccountRegId.at(ii), account)) {
+				CID id(tx.get()->vAccountRegId.at(ii));
+				throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, string("unregister RegID: ") + HexStr(id.GetID()));
 			}
 
-			if (!account.PublicKey.Verify(tx.SignatureHash(), tx.vSignature.at(ii))) {
+			if (!account.PublicKey.Verify(tx.get()->SignatureHash(), tx.get()->vSignature.at(ii))) {
 				throw runtime_error("in signsecuretx :tx data sign err\n");
 			}
 		}
@@ -559,7 +482,7 @@ Value signcontracttx(const Array& params, bool fHelp) {
 		//sig
 		//get keyid by accountid
 		CKeyID keyid;
-		if (!view.GetKeyId(tx.vAccountRegId.at(tx.vSignature.size()), keyid)) {
+		if (!view.GetKeyId(tx.get()->vAccountRegId.at(tx.get()->vSignature.size()), keyid)) {
 			LogPrint("INFO", "vaccountid:%s have no key id\r\n", accountid.ToString());
 			assert(0);
 		}
@@ -567,32 +490,32 @@ Value signcontracttx(const Array& params, bool fHelp) {
 		CKey key;
 		pwalletMain->GetKey(keyid, key);
 		vector<unsigned char> signature;
-		if (!key.Sign(tx.SignatureHash(), signature)) {
+		if (!key.Sign(tx.get()->SignatureHash(), signature)) {
 			throw JSONRPCError(RPC_WALLET_ERROR, "createcontracttx Error: Sign failed.");
 		}
 
-		tx.vSignature.push_back(signature);
+		tx.get()->vSignature.push_back(signature);
 	}
 
-	{
-		if(tx.vSignature.size() == tx.vAccountRegId.size())
-		{
-			if (!pwalletMain->CommitTransaction((CBaseTransaction *) &tx)) {
-						throw JSONRPCError(RPC_WALLET_ERROR, "signcontracttx Error: CommitTransaction failed.");
-					}
-			Object obj;
-			obj.push_back(Pair("txhash",tx.GetHash().ToString()));
-			return obj;
+	if (tx.get()->vSignature.size() == tx.get()->vAccountRegId.size()) {
+
+		std::tuple<bool, string> ret;
+		ret = pwalletMain->CommitTransaction((CBaseTransaction *) tx.get());
+		if (!std::get<0>(ret)) {
+			throw JSONRPCError(RPC_WALLET_ERROR, "registerscripttx Error:" + std::get<1>(ret));
 		}
-		else
-		{
-			CDataStream ds(SER_DISK, CLIENT_VERSION);
-			ds << tx;
-			Object obj;
-			obj.push_back(Pair("RawTx",HexStr(ds.begin(),ds.end())));
-			return obj;
-		}
+		Object obj;
+		obj.push_back(Pair("hash", std::get<1>(ret)));
+		return obj;
+	} else {
+		CDataStream ds(SER_DISK, CLIENT_VERSION);
+		std::shared_ptr<CBaseTransaction> pBaseTx = tx->GetNewInstance();
+		ds << pBaseTx;
+		Object obj;
+		obj.push_back(Pair("RawTx", HexStr(ds.begin(), ds.end())));
+		return obj;
 	}
+
 }
 
 //create a freeze tx
@@ -612,14 +535,18 @@ Value createfreezetx(const Array& params, bool fHelp) {
 				+ HelpExampleCli("createfreezetx",
 						"5zQPcC1YpFMtwxiH787pSXanUECoGsxUq3KZieJxVG 20000000000 100000 1 101") + "\nAs json rpc call\n"
 				+ HelpExampleRpc("createfreezetx",
-						"5zQPcC1YpFMtwxiH787pSXanUECoGsxUq3KZieJxVG 20000000000 100000 1 101");
+						"5zQPcC1YpFMtwxiH787pSXanUECoGsxUq3KZieJxVG 20000000000 100000 1 101")
+				+ HelpExampleCli("createfreezetx",
+				"0-6 20000000000 100000 1 101")
+				+ HelpExampleCli("createfreezetx",
+										"00000000000000000005 20000000000 100000 1 101");
 		throw runtime_error(msg);
 	}
 
 	RPCTypeCheck(params, list_of(str_type)(int_type)(int_type)(int_type)(int_type));
 
 	//get addresss
-	CSoyPayAddress addr(params[0].get_str());
+	string addr = params[0].get_str();
 	uint64_t frozenmoney = params[1].get_uint64();
 	uint64_t fee = params[2].get_uint64();
 	uint32_t height = params[3].get_int();
@@ -634,8 +561,8 @@ Value createfreezetx(const Array& params, bool fHelp) {
 	}
 	//get keyid
 	CKeyID keyid;
-	if (!addr.GetKeyID(keyid)) {
-		throw runtime_error("in createfreezetx :send address err\n");
+	if (!GetKeyId(addr, keyid)) {
+		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid  address");
 	}
 
 	CKey key;
@@ -659,7 +586,7 @@ Value createfreezetx(const Array& params, bool fHelp) {
 		uint64_t balance = 0;
 		CUserID userId = keyid;
 		if (view.GetAccount(userId, account)) {
-			balance = account.GetBalance(chainActive.Tip()->nHeight);
+			balance = account.GetRawBalance(chainActive.Tip()->nHeight);
 		}
 
 		if (!account.IsRegister()) {
@@ -684,14 +611,20 @@ Value createfreezetx(const Array& params, bool fHelp) {
 		if (!key.Sign(tx.SignatureHash(), tx.signature)) {
 			throw JSONRPCError(RPC_WALLET_ERROR, "createfreezetx Error: Sign failed.");
 		}
-		if (!pwalletMain->CommitTransaction((CBaseTransaction *) &tx)) {
-			throw JSONRPCError(RPC_WALLET_ERROR, "createfreezetx Error: CommitTransaction failed.");
-		}
+//		if (!pwalletMain->CommitTransaction((CBaseTransaction *) &tx)) {
+//			throw JSONRPCError(RPC_WALLET_ERROR, "createfreezetx Error: CommitTransaction failed.");
+//		}
 	}
 
-	Object obj;
-	obj.push_back(Pair("txhash",tx.GetHash().ToString()));
-	return obj;
+	std::tuple<bool,string> ret;
+		ret = pwalletMain->CommitTransaction((CBaseTransaction *) &tx);
+		if(!std::get<0>(ret))
+		{
+			throw JSONRPCError(RPC_WALLET_ERROR, "registerscripttx Error:"+ std::get<1>(ret));
+		}
+		Object obj;
+		obj.push_back(Pair("hash", std::get<1>(ret)));
+		return obj;
 }
 
 //create a register script tx
@@ -710,7 +643,7 @@ Value registerscripttx(const Array& params, bool fHelp) {
 				"8.\"nMaxMoneyPerTime\": (numeric, optional)\n"
 				"9.\"nMaxMoneyTotal\": (numeric, optional)\n"
 				"10.\"nMaxMoneyPerDay\": (numeric, optional)\n"
-				"11.\"nUserDefine\": (numeric, optional)\n"
+				"11.\"nUserDefine\": (string, optional)\n"
 				"\nResult:\n"
 				"\"txhash\": (string)\n"
 				"\nExamples:\n"
@@ -724,7 +657,7 @@ Value registerscripttx(const Array& params, bool fHelp) {
 	RPCTypeCheck(params, list_of(str_type)(int_type)(str_type)(int_type)(int_type));
 	CVmScript vmScript;
 	//get addresss
-	CSoyPayAddress addr(params[0].get_str());
+//	CSoyPayAddress addr(params[0].get_str());
 	vector<unsigned char> vscript;
 	int flag = params[1].get_int();
 	if (0 == flag) {
@@ -781,7 +714,7 @@ Value registerscripttx(const Array& params, bool fHelp) {
 	}
 	if (params.size() > 6) {
 		RPCTypeCheck(params, list_of(str_type)(int_type)(str_type)(int_type)(int_type)(str_type)(int_type));
-		nAuthorizeTime = params[6].get_int();
+		nAuthorizeTime = params[6].get_uint64();
 	}
 	if (params.size() > 7) {
 		RPCTypeCheck(params, list_of(str_type)(int_type)(str_type)(int_type)(int_type)(str_type)(int_type)(int_type));
@@ -805,9 +738,10 @@ Value registerscripttx(const Array& params, bool fHelp) {
 	}
 	//get keyid
 	CKeyID keyid;
-	if (!addr.GetKeyID(keyid)) {
+	if (!GetKeyId(params[0].get_str(),keyid)) {
 		throw runtime_error("in registerscripttx :send address err\n");
 	}
+
 
 	assert(pwalletMain != NULL);
 	CRegistScriptTx tx;
@@ -822,7 +756,7 @@ Value registerscripttx(const Array& params, bool fHelp) {
 		uint64_t balance = 0;
 		CUserID userId = keyid;
 		if (view.GetAccount(userId, account)) {
-			balance = account.GetBalance(chainActive.Tip()->nHeight);
+			balance = account.GetRawBalance(chainActive.Tip()->nHeight);
 		}
 
 		if (!account.IsRegister()) {
@@ -837,9 +771,17 @@ Value registerscripttx(const Array& params, bool fHelp) {
 			throw JSONRPCError(RPC_WALLET_ERROR, "in registerscripttx Error: Account balance is insufficient.");
 		}
 
-		if (vscript.size() == SCRIPT_ID_SIZE) {
-			vector<unsigned char> vscriptcontent;
+//		if (vscript.size() == SCRIPT_ID_SIZE) {
+//			vector<unsigned char> vscriptcontent;
 //			CRegID regid(vscript) ;
+//			if (!pScriptDBTip->GetScript(CRegID(vscript), vscriptcontent)) {
+//				throw JSONRPCError(RPC_WALLET_ERROR, "script id find failed");
+//			}
+//		}
+		if(flag)
+		{
+			vector<unsigned char> vscriptcontent;
+			CRegID regid(params[2].get_str()) ;
 			if (!pScriptDBTip->GetScript(CRegID(vscript), vscriptcontent)) {
 				throw JSONRPCError(RPC_WALLET_ERROR, "script id find failed");
 			}
@@ -876,14 +818,21 @@ Value registerscripttx(const Array& params, bool fHelp) {
 		if (!key.Sign(tx.SignatureHash(), tx.signature)) {
 			throw JSONRPCError(RPC_WALLET_ERROR, "registerscripttx Error: Sign failed.");
 		}
-		if (!pwalletMain->CommitTransaction((CBaseTransaction *) &tx)) {
-			throw JSONRPCError(RPC_WALLET_ERROR, "registerscripttx Error: CommitTransaction failed.");
-		}
+//		if (!pwalletMain->CommitTransaction((CBaseTransaction *) &tx)) {
+//			throw JSONRPCError(RPC_WALLET_ERROR, "registerscripttx Error: CommitTransaction failed.");
+//		}
 	}
 
-	Object obj;
-	obj.push_back(Pair("txhash",tx.GetHash().ToString()));
-	return obj;
+		std::tuple<bool,string> ret;
+		ret = pwalletMain->CommitTransaction((CBaseTransaction *) &tx);
+		if(!std::get<0>(ret))
+		{
+			throw JSONRPCError(RPC_WALLET_ERROR, "registerscripttx Error:"+ std::get<1>(ret));
+		}
+		Object obj;
+		obj.push_back(Pair("hash", std::get<1>(ret)));
+		return obj;
+
 }
 
 Value listaddr(const Array& params, bool fHelp) {
@@ -921,7 +870,7 @@ Value listaddr(const Array& params, bool fHelp) {
 				Object obj;
 				CAccount Lambaacc ;
 				accView.GetAccount(userId, Lambaacc);
-				obj.push_back(Pair("free  amount", (double)Lambaacc.GetBalance(curheight)/ (double) COIN));
+				obj.push_back(Pair("free  amount", (double)Lambaacc.GetRawBalance(curheight)/ (double) COIN));
 				obj.push_back(Pair("Reward amount", (double)Lambaacc.GetRewardAmount(curheight)/ (double) COIN));
 				obj.push_back(Pair("freeze amount", (double)Lambaacc.GetSripteFreezeAmount(curheight)/ (double) COIN));
 				obj.push_back(Pair("self freeze amount", (double)Lambaacc.GetSelfFreezeAmount(curheight)/ (double) COIN));
@@ -932,6 +881,7 @@ Value listaddr(const Array& params, bool fHelp) {
 			obj.push_back(Pair("addr",       tem.first.ToAddress()));
 			obj.push_back(Pair("balance",    GetDetailInfo(curheight)));
 			obj.push_back(Pair("RegID",      tem.second.GetRegID().ToString()));
+			obj.push_back(Pair("RegID2",     HexStr(tem.second.GetRegID().GetVec6())));
 			retArry.push_back(obj);
 		}
 	}
@@ -939,11 +889,11 @@ Value listaddr(const Array& params, bool fHelp) {
 }
 
 Value listtx(const Array& params, bool fHelp) {
-	if (fHelp || params.size() != 0) {
+	if (fHelp || params.size() > 1) {
 		string msg = "listaddrtx \"addr\" showtxdetail\n"
 				"\listaddrtx\n"
 				"\nArguments:\n"
-				"1.\"addr\": (string required)"
+				"1.\"addr\": (optional,default all addr in wallet)"
 				"2.showtxdetail: (optional,default false)"
 				"\nResult:\n"
 				"\"txhash\"\n"
@@ -951,19 +901,24 @@ Value listtx(const Array& params, bool fHelp) {
 				+ "\nAs json rpc call\n" + HelpExampleRpc("listtx", "");
 		throw runtime_error(msg);
 	}
+    CKeyID keyid;
+	if (params.size() == 1) {
 
+		if (!GetKeyId(params[0].get_str(), keyid)) {
+			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid  address");
+		}
+	}
 
 	Object retObj;
 	assert(pwalletMain != NULL);
 	{
 		Object Inblockobj;
 		for (auto const &wtx : pwalletMain->mapInBlockTx) {
-			Inblockobj.push_back(Pair("blockhash",  wtx.first.ToString()));
-			Inblockobj.push_back(Pair("tx",  wtx.second.ToJosnObj()));
+			Inblockobj.push_back(Pair("tx",  wtx.second.ToJosnObj(keyid)));
 		}
 		retObj.push_back(Pair("Inblocktx" ,Inblockobj));
 
-		CAccountViewCache view(*pAccountViewTip);
+		CAccountViewCache view(*pAccountViewTip, true);
 		Array UnConfirmTxArry;
 			for (auto const &wtx : pwalletMain->UnConfirmTx) {
 				UnConfirmTxArry.push_back(wtx.second.get()->ToString(view));
@@ -991,26 +946,32 @@ Value getaccountinfo(const Array& params, bool fHelp) {
 		throw runtime_error(msg);
 	}
 	RPCTypeCheck(params, list_of(str_type));
+//	CUserID userId;
+//	if (params[0].get_str().size() == 12) {
+//		vector<unsigned char> vscript = ParseHex(params[0].get_str());
+//		userId = CRegID(vscript);
+//	} else {
+//		CSoyPayAddress address(params[0].get_str());
+//		CKeyID keyid;
+//		if (!address.GetKeyID(keyid))
+//			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid address");
+//		userId = keyid;
+//	}
+	CKeyID keyid;
 	CUserID userId;
-	if (params[0].get_str().size() == 12) {
-		vector<unsigned char> vscript = ParseHex(params[0].get_str());
-		userId = CRegID(vscript);
-	} else {
-		CSoyPayAddress address(params[0].get_str());
-		CKeyID keyid;
-		if (!address.GetKeyID(keyid))
-			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid address");
-		userId = keyid;
+	string addr = params[0].get_str();
+	if (!GetKeyId(addr, keyid)) {
+		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid  address");
 	}
 
+   	userId = keyid;
 	Object obj;
 	{
 		LOCK(cs_main);
-
 		CAccount account;
 		CAccountViewCache accView(*pAccountViewTip, true);
 		if (accView.GetAccount(userId, account)) {
-			return account.ToString();
+			return account.ToJosnObj();
 		}
 	}
 	return obj;
@@ -1032,7 +993,7 @@ Value listunconfirmedtx(const Array& params, bool fHelp) {
 	}
 
 	Object retObj;
-	CAccountViewCache view(*pAccountViewTip);
+	CAccountViewCache view(*pAccountViewTip, true);
 	Array UnConfirmTxArry;
 	for (auto const &wtx : pwalletMain->UnConfirmTx) {
 		UnConfirmTxArry.push_back(wtx.second.get()->ToString(view));
@@ -1060,12 +1021,11 @@ Value sign(const Array& params, bool fHelp) {
 		throw runtime_error(msg);
 	}
 
-	CSoyPayAddress addr(params[0].get_str());
 	vector<unsigned char> vch(ParseHex(params[1].get_str()));
 
 	//get keyid
 	CKeyID keyid;
-	if (!addr.GetKeyID(keyid)) {
+	if (!GetKeyId(params[0].get_str(),keyid)) {
 		throw runtime_error("in sign :send address err\n");
 	}
 	vector<unsigned char> vsign;
@@ -1082,7 +1042,9 @@ Value sign(const Array& params, bool fHelp) {
 			throw JSONRPCError(RPC_WALLET_ERROR, "sign Error: Sign failed.");
 		}
 	}
-	return HexStr(vsign);
+	Object retObj;
+	retObj.push_back(Pair("signeddata",  HexStr(vsign)));
+	return retObj;
 }
 //
 //Value getaccountinfo(const Array& params, bool fHelp) {
@@ -1175,7 +1137,7 @@ static Value COperFundToJson(const COperFund &opfound)
       obj2.push_back(Pair("FundType",  strname[te.nFundType]));
       obj2.push_back(Pair("sriptID",  HexStr(te.scriptID)));
       obj2.push_back(Pair("value",  te.value));
-      obj2.push_back(Pair("value",  te.nHeight));
+      obj2.push_back(Pair("nHeight",  te.nHeight));
       array.push_back(obj2);
 	}
 	obj.push_back(Pair("vFund", array));
@@ -1203,11 +1165,13 @@ Value gettxoperationlog(const Array& params, bool fHelp)
 		}
 	}
 	RPCTypeCheck(params, list_of(str_type));
-	uint256 txHash(ParseHex(params[0].get_str()));
+	uint256 txHash(params[0].get_str());
 	vector<CAccountOperLog> vLog;
 	Object retobj;
 	retobj.push_back(Pair("hash",  txHash.GetHex()));
-	if(GetTxOperLog(txHash, vLog))
+	if(!GetTxOperLog(txHash, vLog))
+	   throw JSONRPCError(RPC_INVALID_PARAMS, "error hash");
+
 	{
 		Array arrayvLog;
         for(auto const &te :vLog)
@@ -1227,13 +1191,50 @@ Value gettxoperationlog(const Array& params, bool fHelp)
         retobj.push_back(Pair("AccountOperLog",  arrayvLog));
 
 	}
-	else
-	{
-		retobj.push_back(Pair("info",  "error hash"));
-	}
+
 	return retobj;
 
 }
+static Value TestDisconnectBlock(int number)
+{
+		CAccountViewCache view(*pAccountViewTip, true);
+		CBlockIndex* pindex = chainActive.Tip();
+		CBlock block;
+		CValidationState state;
+		while (number--) {
+			// check level 0: read from disk
+			 CBlockIndex * pTipIndex = chainActive.Tip();
+		      if (!DisconnectBlockFromTip(state))
+		    	  return false;
+		      chainMostWork.SetTip(pTipIndex->pprev);
+		      if(!EraseBlockIndexFromSet(pTipIndex))
+		    	  return false;
+		      if(!pblocktree->EraseBlockIndex(pTipIndex->GetBlockHash()))
+		    	  return false;
+		      mapBlockIndex.erase(pTipIndex->GetBlockHash());
+
+//			if (!ReadBlockFromDisk(block, pindex))
+//				throw ERROR("VerifyDB() : *** ReadBlockFromDisk failed at %d, hash=%s", pindex->nHeight,
+//						pindex->GetBlockHash().ToString());
+//			bool fClean = true;
+//			CTransactionDBCache txCacheTemp(*pTxCacheTip, true);
+//			CScriptDBViewCache contractScriptTemp(*pScriptDBTip, true);
+//			if (!DisconnectBlock(block, state, view, pindex, txCacheTemp, contractScriptTemp, &fClean))
+//				throw ERROR("VerifyDB() : *** irrecoverable inconsistency in block data at %d, hash=%s", pindex->nHeight,
+//						pindex->GetBlockHash().ToString());
+//			CBlockIndex *pindexDelete = pindex;
+//			pindex = pindex->pprev;
+//			chainActive.SetTip(pindex);
+//
+//			assert(view.Flush() &&txCacheTemp.Flush()&& contractScriptTemp.Flush() );
+//			txCacheTemp.Clear();
+		}
+//		pTxCacheTip->Flush();
+		Object obj;
+		obj.push_back(Pair("tip", strprintf("hash:%s hight:%s",chainActive.Tip()->GetBlockHash().ToString(),chainActive.Tip()->nHeight)));
+		return obj;
+}
+
 
 Value disconnectblock(const Array& params, bool fHelp) {
 	if (fHelp || params.size() != 1) {
@@ -1244,46 +1245,28 @@ Value disconnectblock(const Array& params, bool fHelp) {
 				"\"disconnect result\"  (bool) \n"
 				"\nExamples:\n" + HelpExampleCli("disconnectblock", "\"1\""));
 	}
-	int64_t number = params[0].get_int64();
-	CAccountViewCache view(*pAccountViewTip, true);
-	CBlockIndex* pindex = chainActive.Tip();
-	CBlock block;
-	CValidationState state;
-	while (number--) {
-		// check level 0: read from disk
-//	      if (!DisconnectBlockFromTip(state))
-//	    	  return false;
-		if (!ReadBlockFromDisk(block, pindex))
-			return ERROR("VerifyDB() : *** ReadBlockFromDisk failed at %d, hash=%s", pindex->nHeight,
-					pindex->GetBlockHash().ToString());
-		bool fClean = true;
-		CTransactionCache txCacheTemp(*pTxCacheTip);
-		CScriptDBViewCache contractScriptTemp(*pScriptDBTip);
-		if (!DisconnectBlock(block, state, view, pindex, txCacheTemp, contractScriptTemp, &fClean))
-			return ERROR("VerifyDB() : *** irrecoverable inconsistency in block data at %d, hash=%s", pindex->nHeight,
-					pindex->GetBlockHash().ToString());
-		CBlockIndex *pindexDelete = pindex;
-		pindex = pindex->pprev;
-		chainActive.SetTip(pindex);
-	    if (!pTxCacheTip->DeleteBlockFromCache(block))
-	    	return state.Abort(_("Disconnect tip block failed to delete tx from txcache"));
+	int number = params[0].get_int();
 
-	    //load a block tx into cache transaction
-		CBlockIndex *pReLoadBlockIndex = pindexDelete;
-		if(pindexDelete->nHeight - SysCfg().GetTxCacheHeight()>0) {
-			pReLoadBlockIndex = chainActive[pindexDelete->nHeight - SysCfg().GetTxCacheHeight()];
-			CBlock reLoadblock;
-			if (!ReadBlockFromDisk(reLoadblock, pindexDelete))
-				return state.Abort(_("Failed to read block"));
-			if (!pTxCacheTip->AddBlockToCache(reLoadblock))
-					return state.Abort(_("Disconnect tip block reload preblock tx to txcache"));
-		}
+	Value te = TestDisconnectBlock(number);
 
-		assert(view.Flush() && contractScriptTemp.Flush());
+	return te;
+}
+
+Value restclient(const Array& params, bool fHelp) {
+	Value te = TestDisconnectBlock(chainActive.Tip()->nHeight);
+	if(chainActive.Tip()->nHeight == 0)
+	{
+		pwalletMain->CleanAll();
+		mapBlockIndex.clear();
+		CBlock firs = SysCfg().GenesisBlock();
+		pwalletMain->SyncTransaction(0,NULL,&firs);
+		mempool.clear();
 	}
-	Object obj;
-	obj.push_back(Pair("info", "disconnect ok"));
-	return obj;
+	else
+	{
+		throw JSONRPCError(RPC_WALLET_ERROR, "restclient Error: Sign failed.");
+	}
+	return te;
 
 }
 
@@ -1310,12 +1293,14 @@ Value listregscript(const Array& params, bool fHelp) {
 		if(!pScriptDBTip->GetScript(0, regId, vScript))
 			throw JSONRPCError(RPC_DATABASE_ERROR, "get script error: cannot get registered script.");
 		script.push_back(Pair("scriptId", HexStr(regId.GetVec6())));
+		script.push_back(Pair("scriptId2", regId.ToString()));
 		if(showDetail)
 		script.push_back(Pair("scriptContent", HexStr(vScript.begin(), vScript.end())));
 		arrayScript.push_back(script);
 		while(pScriptDBTip->GetScript(1, regId, vScript)) {
 			Object obj;
 			obj.push_back(Pair("scriptId", HexStr(regId.GetVec6())));
+			obj.push_back(Pair("scriptId2", regId.ToString()));
 			if(showDetail)
 			obj.push_back(Pair("scriptContent", string(vScript.begin(), vScript.end())));
 			arrayScript.push_back(obj);
@@ -1338,10 +1323,9 @@ Value getaddrbalance(const Array& params, bool fHelp) {
 	}
 
 	assert(pwalletMain != NULL);
-	CSoyPayAddress addr(params[0].get_str());
 
 	CKeyID keyid;
-	if (!addr.GetKeyID(keyid))
+	if (!GetKeyId(params[0].get_str(),keyid))
 		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid  address");
 
 	double dbalance = 0.0;
@@ -1351,7 +1335,7 @@ Value getaddrbalance(const Array& params, bool fHelp) {
 		CAccount secureAcc;
 		CUserID userId = keyid;
 		if (accView.GetAccount(userId, secureAcc)) {
-			dbalance = (double) secureAcc.GetBalance(chainActive.Tip()->nHeight + 100) / (double) COIN;
+			dbalance = (double) secureAcc.GetRawBalance(chainActive.Tip()->nHeight + 100) / (double) COIN;
 		}
 	}
 	return dbalance;
@@ -1370,13 +1354,11 @@ Value generateblock(const Array& params, bool fHelp) {
 				+ HelpExampleRpc("generateblock", "5Vp1xpLT8D2FQg3kaaCcjqxfdFNRhxm4oy7GXyBga9");
 		throw runtime_error(msg);
 	}
-
-	CSoyPayAddress addr(params[0].get_str());
-
 	//get keyid
 	CKeyID keyid;
-	if (!addr.GetKeyID(keyid)) {
-		throw runtime_error("in generateblock :address err \n");
+
+	if (!GetKeyId(params[0].get_str(), keyid)) {
+		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "in generateblock :address err");
 	}
 
 	uint256 hash = CreateBlockWithAppointedAddr(keyid);
@@ -1394,22 +1376,24 @@ Value getpublickey(const Array& params, bool fHelp) {
 				"1. \"address \"  (string, required) The soypay address.\n"
 				"\nResult:\n"
 				"\"publickey\"  (string) \n"
-				"\nExamples:\n" + HelpExampleCli("getpublickey", "mpif58ohTASDZNNXreFMFuNAHBfuDUXtjP"));
+				"\nExamples:\n" + HelpExampleCli("getpublickey", "mpif58ohTASDZNNXreFMFuNAHBfuDUXtjP")
+				+HelpExampleCli("getpublickey", "0-6")
+				+HelpExampleCli("getpublickey", "00000000000000000005"));
 	}
-	CSoyPayAddress address(params[0].get_str());
 
+	string address = params[0].get_str();
 	CKeyID keyid;
-	if (!address.GetKeyID(keyid))
-		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Bitcoin address");
-
+	if (!GetKeyId(address, keyid)) {
+		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid SoyPay address");
+	}
 	CPubKey pubkey;
 	{
-//		LOCK2(cs_main, pwalletMain->cs_wallet);
+
 		if (!pwalletMain->GetPubKey(keyid, pubkey))
 			throw JSONRPCError(RPC_MISC_ERROR,
 					tinyformat::format("Wallet do not contain address %s", params[0].get_str()));
 	}
-//	return pubkey.ToString();
+
 	Object obj;
 	obj.push_back(Pair("pubkey",pubkey.ToString()));
 	return obj;
@@ -1478,14 +1462,13 @@ Value getscriptdata(const Array& params, bool fHelp) {
 		throw runtime_error(msg);
 	}
 
-	//RPCTypeCheck(params, list_of(str_type)(int_type)(int_type));
-	vector<unsigned char> vscriptid = ParseHex(params[0].get_str());
-
-
-	if (vscriptid.size() != SCRIPT_ID_SIZE) {
+//	//RPCTypeCheck(params, list_of(str_type)(int_type)(int_type));
+//	vector<unsigned char> vscriptid = ParseHex(params[0].get_str());
+	CRegID regid(params[0].get_str());
+	if (regid.IsEmpty() == true) {
 		throw runtime_error("in getscriptdata :vscriptid size is error!\n");
 	}
-	CRegID regid(vscriptid);
+
 	if (!pScriptDBTip->HaveScript(regid)) {
 		throw runtime_error("in getscriptdata :vscriptid id is exist!\n");
 	}
@@ -1559,3 +1542,33 @@ Value getscriptdata(const Array& params, bool fHelp) {
 
 	return script;
 }
+
+Value saveblocktofile(const Array& params, bool fHelp) {
+	if (fHelp || params.size() != 2) {
+			string msg = "saveblocktofile nrequired"
+					"\nArguments:\n"
+					"1.\"blockhash\": (string, required)\n"
+					"2.\"filepath\": (string, required)\n";
+			throw runtime_error(msg);
+		}
+	string strblockhash = params[0].get_str();
+	uint256 blockHash(params[0].get_str());
+	CBlockIndex *pIndex = mapBlockIndex[blockHash];
+	CBlock blockInfo;
+	if (!ReadBlockFromDisk(blockInfo, pIndex))
+		throw runtime_error(_("Failed to read block"));
+	string file = params[1].get_str();
+	try {
+		FILE* fp = fopen(file.c_str(), "a+");
+		CAutoFile fileout = CAutoFile(fp, SER_DISK, CLIENT_VERSION);
+		if (!fileout)
+			throw JSONRPCError(RPC_MISC_ERROR, "open file:"+strblockhash+"failed!");
+		fileout << blockInfo;
+		fflush(fileout);
+		fclose(fp);
+	}catch(std::exception &e) {
+		throw JSONRPCError(RPC_MISC_ERROR, "save block to file error");
+	}
+	return "save succeed";
+}
+

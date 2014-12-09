@@ -108,7 +108,7 @@ class CValidationState;
 class CWalletInterface;
 struct CNodeStateStats;
 class CAccountViewDB;
-class CTransactionCacheDB;
+class CTransactionDB;
 class CScriptDB;
 
 struct CBlockTemplate;
@@ -283,7 +283,7 @@ inline bool AllowFree(double dPriority)
 }
 
 // Context-independent validity checks
-bool CheckTransaction(CBaseTransaction *pBaseTx, CValidationState& state, CAccountViewCache &view, int blockHeight = 0);
+bool CheckTransaction(CBaseTransaction *pBaseTx, CValidationState& state, CAccountViewCache &view);
 
 /** Check for standard transaction types
     @return True if all outputs (scriptPubKeys) use only standard transaction forms
@@ -535,10 +535,10 @@ bool ReadBlockFromDisk(CBlock& block, const CBlockIndex* pindex);
  *  In case pfClean is provided, operation will try to be tolerant about errors, and *pfClean
  *  will be true if no problems were found. Otherwise, the return value will be false in case
  *  of problems. Note that in any case, coins may be modified. */
-bool DisconnectBlock(CBlock& block, CValidationState& state, CAccountViewCache &view, CBlockIndex* pindex, CTransactionCache &txCache, CScriptDBViewCache &scriptCache, bool* pfClean = NULL);
+bool DisconnectBlock(CBlock& block, CValidationState& state, CAccountViewCache &view, CBlockIndex* pindex, CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache, bool* pfClean = NULL);
 
 // Apply the effects of this block (with given index) on the UTXO set represented by coins
-bool ConnectBlock(CBlock& block, CValidationState& state, CAccountViewCache &view, CBlockIndex* pindex, CTransactionCache &txCache, CScriptDBViewCache &scriptCache, bool fJustCheck = false);
+bool ConnectBlock(CBlock& block, CValidationState& state, CAccountViewCache &view, CBlockIndex* pindex, CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache, bool fJustCheck = false);
 
 // Add this block to the block index, and if necessary, switch the active block chain to this
 bool AddToBlockIndex(CBlock& block, CValidationState& state, const CDiskBlockPos& pos);
@@ -557,6 +557,9 @@ bool DisconnectBlockFromTip(CValidationState &state);
 
 //get tx operate account log
 bool GetTxOperLog(const uint256 &txHash, vector<CAccountOperLog> &vAccountOperLog);
+
+//get setBlockIndexValid
+Value ListSetBlockIndexValid();
 
 class CBlockFileInfo
 {
@@ -829,7 +832,6 @@ public:
 };
 
 
-
 /** Used to marshal pointers into hashes for db storage. */
 class CDiskBlockIndex : public CBlockIndex
 {
@@ -1034,16 +1036,18 @@ extern CBlockTreeDB *pblocktree;
 extern CAccountViewCache *pAccountViewTip;
 
 /** transaction cache db */
-extern CTransactionCacheDB *pTxCacheDB;
+extern CTransactionDB *pTxCacheDB;
 
 /** srcipt db */
 extern CScriptDB *pScriptDB;
 
 /** tx cache */
-extern CTransactionCache *pTxCacheTip;
+extern CTransactionDBCache *pTxCacheTip;
 
 /** contract script data cache */
 extern CScriptDBViewCache *pScriptDBTip;
+
+extern std::tuple<bool, boost::thread*> RunSoyPay(int argc, char* argv[]);
 
 //extern set<uint256> setTxHashCache;
 //extern map<uint256, set<uint256> > mapTxHashCacheByPrev;
@@ -1058,7 +1062,7 @@ struct CBlockTemplate
 };
 
 
-
+bool EraseBlockIndexFromSet(CBlockIndex *pIndex);
 
 
 

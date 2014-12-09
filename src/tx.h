@@ -21,8 +21,8 @@ class CValidationState;
 class CAccountViewCache;
 class CScriptDB;
 class CBlock;
-class CTransactionCacheDB;
-class CTransactionCache;
+class CTransactionDBCache;
+//class CTransactionDBCache;
 class CScriptDBViewCache;
 class CRegID;
 class CID;
@@ -46,12 +46,15 @@ public:
 	friend class CID;
 	vector<unsigned char> &GetVec6() const {return vRegID;}
 	void SetRegID(const vector<unsigned char> &vIn) ;
+	void SetRegID(string strRegID);
     CKeyID getKeyID(const CAccountViewCache &view)const;
 	CRegID(string strRegID);
 	bool operator ==(const CRegID& co) const {
 		return (this->nHeight == co.nHeight && this->nIndex == co.nIndex);
 	}
+	static bool IsSimpleRegIdStr(const string & str);
 	static bool IsRegIdStr(const string & str);
+	static bool GetKeyID(const string & str,CKeyID &keyId);
 	CRegID(const vector<unsigned char> &vIn) ;
     bool IsEmpty()const{return (nHeight == 0 && nIndex == 0);};
 	CRegID(uint32_t nHeight = 0, uint16_t nIndex = 0);
@@ -83,6 +86,7 @@ public:
 	bool Set(const CRegID &id);
     bool Set(const CKeyID &id);
     bool Set(const CPubKey &id);
+    bool Set(const CNullID &id);
     bool Set(const CUserID &userid);
     CID() {}
     CID(const CUserID &dest) {Set(dest);}
@@ -111,7 +115,7 @@ public:
 		return pId->Set(id);
 	}
 	bool operator()(const CNullID &no) const {
-		return false;
+		return true;
 	}
 };
 
@@ -199,7 +203,8 @@ public:
 		READWRITE(VARINT(nMaxMoneyTotal));
 		READWRITE(VARINT(nMaxMoneyPerDay));
 	)
-
+	Object ToJosnObj() const;
+	string ToString(bool bFlag) const;
 protected:
 	uint32_t nAuthorizeTime;
 	vector<unsigned char> nUserDefine;
@@ -272,6 +277,8 @@ public:
 			ds >> VARINT(nCurMaxMoneyPerDay);
 		}
 	}
+	Object ToJosnObj() const;
+	string ToString(bool bFlag) const;
 
 private:
 	uint32_t nLastOperHeight;
@@ -287,6 +294,10 @@ public:
 	unsigned char nTxType;
 	int nVersion;
 public:
+
+
+
+
 	CBaseTransaction(const CBaseTransaction &other) {
 		*this = other;
 	}
@@ -333,10 +344,10 @@ public:
 	}
 
 	virtual bool UpdateAccount(int nIndex, CAccountViewCache &view, CValidationState &state, CTxUndo &txundo,
-			int nHeight, CTransactionCache &txCache, CScriptDBViewCache &scriptCache) = 0;
+			int nHeight, CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache) = 0;
 
 	virtual bool UndoUpdateAccount(int nIndex, CAccountViewCache &view, CValidationState &state, CTxUndo &txundo,
-			int nHeight, CTransactionCache &txCache, CScriptDBViewCache &scriptCache) = 0;
+			int nHeight, CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache) = 0;
 
 	virtual bool CheckTransction(CValidationState &state, CAccountViewCache &view) = 0;
 
@@ -346,7 +357,7 @@ class CRegisterAccountTx: public CBaseTransaction {
 
 public:
 	mutable CUserID userId;      //pubkey
-	mutable CUserID MinerId;    //Miner pubkey
+	mutable CUserID minerId;     //Miner pubkey
 	int64_t llFees;
 	int nValidHeight;
 	vector<unsigned char> signature;
@@ -366,22 +377,94 @@ public:
 	~CRegisterAccountTx() {
 	}
 
-	IMPLEMENT_SERIALIZE
-	(
-		READWRITE(this->nVersion);
-		nVersion = this->nVersion;
-		CID id(userId);
-		READWRITE(id);
-		CID mMinerid(MinerId);
-		READWRITE(mMinerid);
-		if(fRead) {
-			userId = id.GetUserId();
-			MinerId = mMinerid.GetUserId();
+	unsigned int GetSerializeSize(int nType, int nVersion) const {
+		CSerActionGetSerializeSize ser_action;
+		const bool fGetSize = true;
+		const bool fWrite = false;
+		const bool fRead = false;
+		unsigned int nSerSize = 0;
+		ser_streamplaceholder s;
+		s.nType = nType;
+		s.nVersion = nVersion;
+		{
+			(nSerSize += ::SerReadWrite(s, (REF(WrapVarInt(REF(this->nVersion)))), nType, nVersion, ser_action));
+			nVersion = this->nVersion;
+			CID id(userId);
+			(nSerSize += ::SerReadWrite(s, (id), nType, nVersion, ser_action));
+			CID mMinerid(minerId);
+			(nSerSize += ::SerReadWrite(s, (mMinerid), nType, nVersion, ser_action));
+			if (fRead) {
+				userId = id.GetUserId();
+				minerId = mMinerid.GetUserId();
+			}
+			(nSerSize += ::SerReadWrite(s, (REF(WrapVarInt(REF(llFees)))), nType, nVersion, ser_action));
+			(nSerSize += ::SerReadWrite(s, (REF(WrapVarInt(REF(nValidHeight)))), nType, nVersion, ser_action));
+			(nSerSize += ::SerReadWrite(s, (signature), nType, nVersion, ser_action));
 		}
-		READWRITE(VARINT(llFees));
-		READWRITE(VARINT(nValidHeight));
-		READWRITE(signature);
-	)
+		return nSerSize;
+	}
+	template<typename Stream>
+	void Serialize(Stream& s, int nType, int nVersion) const {
+		CSerActionSerialize ser_action;
+		const bool fGetSize = false;
+		const bool fWrite = true;
+		const bool fRead = false;
+		unsigned int nSerSize = 0;
+		{
+			(nSerSize += ::SerReadWrite(s, (REF(WrapVarInt(REF(this->nVersion)))), nType, nVersion, ser_action));
+			nVersion = this->nVersion;
+			CID id(userId);
+			(nSerSize += ::SerReadWrite(s, (id), nType, nVersion, ser_action));
+			CID mMinerid(minerId);
+			(nSerSize += ::SerReadWrite(s, (mMinerid), nType, nVersion, ser_action));
+			if (fRead) {
+				userId = id.GetUserId();
+				minerId = mMinerid.GetUserId();
+			}
+			(nSerSize += ::SerReadWrite(s, (REF(WrapVarInt(REF(llFees)))), nType, nVersion, ser_action));
+			(nSerSize += ::SerReadWrite(s, (REF(WrapVarInt(REF(nValidHeight)))), nType, nVersion, ser_action));
+			(nSerSize += ::SerReadWrite(s, (signature), nType, nVersion, ser_action));
+		}
+	}
+	template<typename Stream>
+	void Unserialize(Stream& s, int nType, int nVersion) {
+		CSerActionUnserialize ser_action;
+		const bool fGetSize = false;
+		const bool fWrite = false;
+		const bool fRead = true;
+		unsigned int nSerSize = 0;
+		{
+			(nSerSize += ::SerReadWrite(s, (REF(WrapVarInt(REF(this->nVersion)))), nType, nVersion, ser_action));
+			nVersion = this->nVersion;
+			CID id(userId);
+			(nSerSize += ::SerReadWrite(s, (id), nType, nVersion, ser_action));
+			CID mMinerid(minerId);
+			(nSerSize += ::SerReadWrite(s, (mMinerid), nType, nVersion, ser_action));
+			if (fRead) {
+				userId = id.GetUserId();
+				minerId = mMinerid.GetUserId();
+			}
+			(nSerSize += ::SerReadWrite(s, (REF(WrapVarInt(REF(llFees)))), nType, nVersion, ser_action));
+			(nSerSize += ::SerReadWrite(s, (REF(WrapVarInt(REF(nValidHeight)))), nType, nVersion, ser_action));
+			(nSerSize += ::SerReadWrite(s, (signature), nType, nVersion, ser_action));
+		}
+	}
+//	IMPLEMENT_SERIALIZE
+//	(
+//		READWRITE(VARINT(this->nVersion));
+//		nVersion = this->nVersion;
+//		CID id(userId);
+//		READWRITE(id);
+//		CID mMinerid(minerId);
+//		READWRITE(mMinerid);
+//		if(fRead) {
+//			userId = id.GetUserId();
+//			minerId = mMinerid.GetUserId();
+//		}
+//		READWRITE(VARINT(llFees));
+//		READWRITE(VARINT(nValidHeight));
+//		READWRITE(signature);
+//	)
 
 	uint64_t GetFee() const {
 		return llFees;
@@ -398,7 +481,8 @@ public:
 	uint256 SignatureHash() const {
 		CHashWriter ss(SER_GETHASH, 0);
 		CID id(userId);
-		ss << id << VARINT(llFees) << VARINT(nValidHeight);
+		CID id2(minerId);
+		ss <<VARINT(nVersion) << nTxType << id << id2 << VARINT(llFees) << VARINT(nValidHeight);
 		return ss.GetHash();
 	}
 
@@ -413,10 +497,10 @@ public:
 	string ToString(CAccountViewCache &view) const;
 
 	bool UpdateAccount(int nIndex, CAccountViewCache &view, CValidationState &state, CTxUndo &txundo, int nHeight,
-			CTransactionCache &txCache, CScriptDBViewCache &scriptCache);
+			CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache);
 
 	bool UndoUpdateAccount(int nIndex, CAccountViewCache &view, CValidationState &state, CTxUndo &txundo, int nHeight,
-			CTransactionCache &txCache, CScriptDBViewCache &scriptCache);
+			CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache);
 
 	bool CheckTransction(CValidationState &state, CAccountViewCache &view);
 };
@@ -451,7 +535,7 @@ public:
 
 	IMPLEMENT_SERIALIZE
 	(
-			READWRITE(this->nVersion);
+			READWRITE(VARINT(this->nVersion));
 			nVersion = this->nVersion;
 			CID srcId(srcUserId);
 			READWRITE(srcId);
@@ -498,10 +582,10 @@ public:
 	string ToString(CAccountViewCache &view) const;
 
 	bool UpdateAccount(int nIndex, CAccountViewCache &view, CValidationState &state, CTxUndo &txundo, int nHeight,
-			CTransactionCache &txCache, CScriptDBViewCache &scriptCache);
+			CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache);
 
 	bool UndoUpdateAccount(int nIndex, CAccountViewCache &view, CValidationState &state, CTxUndo &txundo, int nHeight,
-			CTransactionCache &txCache, CScriptDBViewCache &scriptCache);
+			CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache);
 
 	bool CheckTransction(CValidationState &state, CAccountViewCache &view);
 };
@@ -536,23 +620,23 @@ public:
 
 	IMPLEMENT_SERIALIZE
 	(
-			READWRITE(this->nVersion);
+			READWRITE(VARINT(this->nVersion));
 			nVersion = this->nVersion;
 			CID scriptId(scriptRegId);
 			READWRITE(scriptId);
-			for(auto &acctRegId : vAccountRegId) {
-				vector<CID> vAcctId;
-				vAcctId.push_back(CID(acctRegId));
-				READWRITE(vAcctId);
-			}
+			vector<CID> vAcctId;
 			if(fRead) {
 				scriptRegId = scriptId.GetUserId();
-				vector<CID> vAcctId;
 				READWRITE(vAcctId);
 				for(auto &acctId : vAcctId) {
 					CUserID userId = acctId.GetUserId();
 					vAccountRegId.push_back(userId);
 				}
+			} else {
+				for(auto &acctRegId : vAccountRegId) {
+					vAcctId.push_back(CID(acctRegId));
+				}
+				READWRITE(vAcctId);
 			}
 			READWRITE(VARINT(llFees));
 			READWRITE(vContract);
@@ -589,10 +673,10 @@ public:
 	}
 
 	bool UpdateAccount(int nIndex, CAccountViewCache &view, CValidationState &state, CTxUndo &txundo, int nHeight,
-			CTransactionCache &txCache, CScriptDBViewCache &scriptCache);
+			CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache);
 
 	bool UndoUpdateAccount(int nIndex, CAccountViewCache &view, CValidationState &state, CTxUndo &txundo, int nHeight,
-			CTransactionCache &txCache, CScriptDBViewCache &scriptCache);
+			CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache);
 
 	bool CheckTransction(CValidationState &state, CAccountViewCache &view);
 
@@ -631,7 +715,7 @@ public:
 
 	IMPLEMENT_SERIALIZE
 	(
-			READWRITE(this->nVersion);
+		    READWRITE(VARINT(this->nVersion));
 			nVersion = this->nVersion;
 			CID regId(regAccountId);
 			READWRITE(regId);
@@ -660,7 +744,7 @@ public:
 	uint256 SignatureHash() const {
 		CHashWriter ss(SER_GETHASH, 0);
 		CID regId(regAccountId);
-		ss << regId << VARINT(llFees) << VARINT(llFreezeFunds) << VARINT(nValidHeight) << VARINT(nUnfreezeHeight);
+		ss <<VARINT(nVersion) << nTxType << regId << VARINT(llFees) << VARINT(llFreezeFunds) << VARINT(nValidHeight) << VARINT(nUnfreezeHeight);
 		return ss.GetHash();
 	}
 
@@ -671,10 +755,10 @@ public:
 	bool IsValidHeight(int nCurHeight, int nTxCacheHeight) const;
 
 	bool UpdateAccount(int nIndex, CAccountViewCache &view, CValidationState &state, CTxUndo &txundo, int nHeight,
-			CTransactionCache &txCache, CScriptDBViewCache &scriptCache);
+			CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache);
 
 	bool UndoUpdateAccount(int nIndex, CAccountViewCache &view, CValidationState &state, CTxUndo &txundo, int nHeight,
-			CTransactionCache &txCache, CScriptDBViewCache &scriptCache);
+			CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache);
 
 	bool CheckTransction(CValidationState &state, CAccountViewCache &view);
 };
@@ -713,7 +797,7 @@ public:
 
 	IMPLEMENT_SERIALIZE
 	(
-		READWRITE(this->nVersion);
+		READWRITE(VARINT(this->nVersion));
 		nVersion = this->nVersion;
 		CID acctId(account);
 		READWRITE(acctId);
@@ -735,7 +819,7 @@ public:
 	uint256 SignatureHash() const {
 		CHashWriter ss(SER_GETHASH, 0);
 		CID accId(account);
-		ss << accId << VARINT(rewardValue) << VARINT(nHeight);
+		ss <<VARINT(nVersion) << nTxType<< accId << VARINT(rewardValue) << VARINT(nHeight);
 		return ss.GetHash();
 	}
 
@@ -756,10 +840,10 @@ public:
 	}
 
 	bool UpdateAccount(int nIndex, CAccountViewCache &view, CValidationState &state, CTxUndo &txundo, int nHeight,
-			CTransactionCache &txCache, CScriptDBViewCache &scriptCache);
+			CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache);
 
 	bool UndoUpdateAccount(int nIndex, CAccountViewCache &view, CValidationState &state, CTxUndo &txundo, int nHeight,
-			CTransactionCache &txCache, CScriptDBViewCache &scriptCache);
+			CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache);
 
 	bool CheckTransction(CValidationState &state, CAccountViewCache &view);
 };
@@ -792,7 +876,7 @@ public:
 
 	IMPLEMENT_SERIALIZE
 	(
-		READWRITE(this->nVersion);
+		READWRITE(VARINT(this->nVersion));
 		nVersion = this->nVersion;
 		CID regAcctId(regAccountId);
 		READWRITE(regAcctId);
@@ -836,10 +920,10 @@ public:
 	bool IsValidHeight(int nCurHeight, int nTxCacheHeight) const;
 
 	bool UpdateAccount(int nIndex, CAccountViewCache &view, CValidationState &state, CTxUndo &txundo, int nHeight,
-			CTransactionCache &txCache, CScriptDBViewCache &scriptCache);
+			CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache);
 
 	bool UndoUpdateAccount(int nIndex, CAccountViewCache &view, CValidationState &state, CTxUndo &txundo, int nHeight,
-			CTransactionCache &txCache, CScriptDBViewCache &scriptCache);
+			CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache);
 
 	bool CheckTransction(CValidationState &state, CAccountViewCache &view);
 };
@@ -1279,7 +1363,7 @@ public:
 	uint64_t GetRewardAmount(int nCurHeight);
 	uint64_t GetSripteFreezeAmount(int nCurHeight);
 	uint64_t GetSelfFreezeAmount(int nCurHeight);
-	uint64_t GetBalance(int nCurHeight);
+	uint64_t GetRawBalance(int nCurHeight);
 	uint256 BuildMerkleTree(int prevBlockHeight) const;
 	void ClearAccPos(uint256 hash, int prevBlockHeight, int nIntervalPos);
 	uint64_t GetAccountPos(int prevBlockHeight) const;
@@ -1307,6 +1391,7 @@ public:
 			READWRITE(vFreedomFund);
 			READWRITE(vFreeze);
 			READWRITE(vSelfFreeze);
+			READWRITE(mapAuthorizate);
 	)
 
 private:
@@ -1325,24 +1410,6 @@ private:
 	void UndoAuthorityOverDay(const CAuthorizateLog& log);
 	uint64_t GetVecMoney(const vector<CFund>& vFund);
 };
-
-class CTransactionCache {
-private:
-	CTransactionCacheDB *base;
-	map<uint256, vector<uint256> > mapTxHashByBlockHash;  // key:block hash  value:tx hash
-	bool IsContainBlock(const CBlock &block);
-public:
-	CTransactionCache(CTransactionCacheDB *pTxCacheDB);
-	bool AddBlockToCache(const CBlock &block);
-	bool DeleteBlockFromCache(const CBlock &block);
-	bool IsContainTx(const uint256 & txHash);
-	const map<uint256, vector<uint256> > &GetTxHashCache(void) const;
-	void AddTxHashCache(const uint256 & blockHash, const vector<uint256> &vTxHash);
-	bool Flush();
-	bool LoadTransaction();
-	void Clear();
-};
-
 
 inline unsigned int GetSerializeSize(const std::shared_ptr<CBaseTransaction> &pa, int nType, int nVersion) {
 	return pa->GetSerializeSize(nType, nVersion) + 1;

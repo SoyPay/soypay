@@ -119,19 +119,19 @@ void Shutdown()
     StopRPCThreads();
     ShutdownRPCMining();
 
-#ifdef ENABLE_WALLET
+
     if (pwalletMain)
         bitdb.Flush(false);
     GenerateBitcoins(false, NULL, 0);
-#endif
+
     StopNode();
     UnregisterNodeSignals(GetNodeSignals());
     {
         LOCK(cs_main);
-#ifdef ENABLE_WALLET
+
         if (pwalletMain)
             pwalletMain->SetBestChain(chainActive.GetLocator());
-#endif
+
         if (pblocktree)
             pblocktree->Flush();
 
@@ -153,17 +153,18 @@ void Shutdown()
 
 
     }
-#ifdef ENABLE_WALLET
+
     if (pwalletMain)
         bitdb.Flush(true);
-#endif
+
     boost::filesystem::remove(GetPidFile());
     UnregisterAllWallets();
-#ifdef ENABLE_WALLET
+
     if (pwalletMain)
         delete pwalletMain;
-#endif
+
     LogPrint("INFO","Shutdown : done\n");
+    printf("Shutdown : done\n");
 }
 
 //
@@ -621,7 +622,7 @@ bool AppInit2(boost::thread_group& threadGroup)
     LogPrint("INFO","Default data directory %s\n", GetDefaultDataDir().string());
     printf("Default data directory %s\n", GetDefaultDataDir().string().c_str());
     LogPrint("INFO","Using data directory %s\n", strDataDir);
-    printf("Default data directory %s\n", strDataDir.c_str());
+    printf("Using data directory %s\n", strDataDir.c_str());
     LogPrint("INFO","Using at most %i connections (%i file descriptors available)\n", nMaxConnections, nFD);
     printf("Using at most %i connections (		%i file descriptors available)\n", nMaxConnections, nFD);
     ostringstream strErrors;
@@ -784,9 +785,14 @@ bool AppInit2(boost::thread_group& threadGroup)
 
     SysCfg().SetCoinCacheSize(nTotalCache / 300); // coins in memory require around 300 bytes
 
-    pwalletMain = CWallet::getinstance();
-    RegisterWallet(pwalletMain);
-    DBErrors nLoadWalletRet = pwalletMain->LoadWallet(false);
+    try {
+        pwalletMain = CWallet::getinstance();
+        RegisterWallet(pwalletMain);
+        DBErrors nLoadWalletRet = pwalletMain->LoadWallet(false);
+    	} catch (...) {
+    		cout<< "pwalletMain error!"<< endl;
+    	}
+
 
 
 
@@ -811,11 +817,11 @@ bool AppInit2(boost::thread_group& threadGroup)
 
                 pblocktree = new CBlockTreeDB(nBlockTreeDBCache, false, SysCfg().IsReindex());
                 pAccountViewDB = new CAccountViewDB(nAccountDBCache, false, SysCfg().IsReindex());
-                pAccountViewTip =  new CAccountViewCache(*pAccountViewDB);
-                pTxCacheDB = new CTransactionCacheDB(nTxCacheSize, false, SysCfg().IsReindex());
-                pTxCacheTip = new CTransactionCache(pTxCacheDB);
+                pAccountViewTip =  new CAccountViewCache(*pAccountViewDB,true);
+                pTxCacheDB = new CTransactionDB(nTxCacheSize, false, SysCfg().IsReindex());
+                pTxCacheTip = new CTransactionDBCache(*pTxCacheDB,true);
                 pScriptDB = new CScriptDB(nScriptCacheSize, false , SysCfg().IsReindex());
-                pScriptDBTip = new CScriptDBViewCache(*pScriptDB, false);
+                pScriptDBTip = new CScriptDBViewCache(*pScriptDB,true);
 
 
                 if (SysCfg().IsReindex())
@@ -846,16 +852,16 @@ bool AppInit2(boost::thread_group& threadGroup)
                     break;
                 }
 
+				if (!pTxCacheTip->LoadTransaction()) {
+					strLoadError = _("Error loading transaction cache database");
+				}
+
                 uiInterface.InitMessage(_("Verifying blocks..."));
                 if (!VerifyDB(SysCfg().GetArg("-checklevel", 3),
                 		SysCfg().GetArg("-checkblocks", 288))) {
                     strLoadError = _("Corrupted block database detected");
                     break;
                 }
-
-				if (!pTxCacheTip->LoadTransaction()) {
-					strLoadError = _("Error loading transaction cache database");
-				}
 
             } catch(std::exception &e) {
                 LogPrint("INFO","%s\n", e.what());
@@ -982,10 +988,10 @@ bool AppInit2(boost::thread_group& threadGroup)
 
 
     // Generate coins in the background
-    if (pwalletMain)
-        GenerateBitcoins(SysCfg().GetBoolArg("-gen", false), pwalletMain, SysCfg().GetArg("-genproclimit", -1));
-
-
+	if (pwalletMain) {
+		GenerateBitcoins(SysCfg().GetBoolArg("-gen", false), pwalletMain, SysCfg().GetArg("-genproclimit", -1));
+		pwalletMain->ResendWalletTransactions();
+	}
     // ********************************************************* Step 12: finished
 
     uiInterface.InitMessage(_("Done loading"));
