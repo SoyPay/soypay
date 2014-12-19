@@ -8,7 +8,7 @@
 #include "core.h"
 #include "crypter.h"
 #include "key.h"
-#include "keystore.h"
+//#include "keystore.h"
 #include "main.h"
 #include "ui_interface.h"
 #include "util.h"
@@ -62,6 +62,8 @@ public:
 	{
 		return strprintf("CRegID:%s CPubKey:%s CKey:%s mMinerCkey:%s CreationTime:%d",mregId.ToString(),mPKey.ToString(),mCkey.ToString(),mMinerCkey.ToString(),nCreationTime);
 	}
+	Object ToJsonObj()const;
+	bool UnSersailFromJson(const Object&);
 	INT64 getBirthDay()const
 	{
 		return nCreationTime;
@@ -97,25 +99,8 @@ public:
 		assert(mCkey.GetPubKey() == mPKey);
 		return  true;
 	}
-	bool SynchronizSys(CAccountViewCache &view)
-	{
-		 CAccount account;
-		if(!view.GetAccount(CUserID(mPKey.GetKeyID()),account))
-		{
-			mregId.clean();
-			mMinerCkey.Clear();
-		}
-		else
-		{
-			mregId = account.regID;
-			assert(account.PublicKey == mPKey);
-			if(account.MinerPKey.IsValid())
-			assert(account.MinerPKey == mMinerCkey.GetPubKey());
-		}
+	bool SynchronizSys(CAccountViewCache &view);
 
-		LogPrint("wallet","%s \r\n",this->ToString());
-		return true;
-	}
 
 	CKeyStoreValue(const CPubKey &pubkey) {
 		assert(mCkey.IsValid() == false && pubkey.IsFullyValid()); //the ckey mustbe unvalid
@@ -220,8 +205,10 @@ public:
 
 	int64_t GetRawBalance(int ncurhigh)const;
     bool SynchronizRegId(const CKeyID &keyid,const CAccountViewCache &inview);
-
+    bool Sign(const CUserID &keyID,const uint256 &hash,vector<unsigned char> &signature,bool IsMiner=false)const;
     bool AddKey(const CKey& secret,const CKey& minerKey);
+    bool AddKey(const CKeyStoreValue& store);
+	bool AddPubKey(const CPubKey& pk);
 	bool SynchronizSys(const CAccountViewCache &inview) ;
 	static string defaultFilename ;
 
@@ -235,11 +222,11 @@ public:
 	bool GetPubKey(const CKeyID &address, CPubKey& keyOut,bool IsMiner = false);
 
 	bool GetKey(const CKeyID &address, CKey& keyOut, bool IsMiner = false) const ;
-	bool GetKey(const CUserID &address, CKey& keyOut) const ;
+	bool GetKey(const CUserID &address, CKey& keyOut,bool IsMiner = false) const ;
 	bool GetRegId(const CUserID &address, CRegID& IdOut) const;
 
-	bool GetKeyIds(set<CKeyID> &setKeyID)const ;
-	bool AddPubKey(const CPubKey& pk);
+	bool GetKeyIds(set<CKeyID>& setKeyID,bool IsMiner = false)const ;
+
 
 	bool CleanAll(); //just for unit test
 

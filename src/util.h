@@ -126,8 +126,8 @@ int LogPrintStr(const char* category, const string &str);
     template<TINYFORMAT_ARGTYPES(n)>                                          \
     static inline bool error2(int line, const char* file,const char* format1, TINYFORMAT_VARARGS(n))     \
     {                                                                         \
-        LogPrintStr(tfm::format("[%s:%d]: ", file, line)+ string("ERROR: ") +tfm::format(format1, TINYFORMAT_PASSARGS(n)) + "\n");\
-        return false;                                                         \
+    	LogPrintStr("ERROR", GetLogHead(line,file,"ERROR") + tfm::format(format1, TINYFORMAT_PASSARGS(n))); \
+    	return false;                                                         \
     }
 
 
@@ -136,7 +136,8 @@ TINYFORMAT_FOREACH_ARGNUM(MAKE_ERROR_AND_TRACE_FUNC)
 
 
 static inline bool error2(int line, const char* file,const char* format) {
-	LogPrintStr(tfm::format("[%s:%d]: ", file, line)+string("ERROR: ") + format + "\n");
+//	LogPrintStr(tfm::format("[%s:%d]: ", file, line)+string("ERROR: ") + format + "\n");
+	LogPrintStr("ERROR",  GetLogHead(line,file,"ERROR") + format + "\n");
 	return false;
 }
 
@@ -147,10 +148,10 @@ static inline int LogTrace(const char* category, int line, const char* file, con
 	return LogPrintStr(category,  GetLogHead(line,file,category) + format);
 }
 
-static inline bool errorTrace(const char* format) {
-	LogPrintStr(string("ERROR: ") + format + "\n");
-	return false;
-}
+//static inline bool errorTrace(const char* format) {
+//	LogPrintStr(string("ERROR: ") + format + "\n");
+//	return false;
+//}
 
 void LogException(std::exception* pex, const char* pszThread);
 void PrintExceptionContinue(std::exception* pex, const char* pszThread);

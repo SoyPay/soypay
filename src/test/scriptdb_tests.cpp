@@ -85,9 +85,11 @@ void testscriptdatadb() {
 	CRegID regScriptId(vScriptId);
 	BOOST_CHECK(pTestView->SetScriptData(regScriptId, vScriptKey, vScriptData, 100, operlog));
 	int height = 0;
-	BOOST_CHECK(pTestView->GetScriptData(regScriptId,vScriptKey,vScriptData,height));
+	int curheight = 0;
+	BOOST_CHECK(pTestView->GetScriptData(curheight,regScriptId,vScriptKey,vScriptData,height,operlog));
 	pTestView->GetScriptCount(height);
-	BOOST_CHECK(pTestView->GetScriptData(regScriptId, 0, vScriptKey, vScriptData, height));
+	set<CScriptDBOperLog> setOperLog;
+	BOOST_CHECK(pTestView->GetScriptData(curheight,regScriptId, 0, vScriptKey, vScriptData, height, setOperLog));
 	BOOST_CHECK(pTestView->SetScriptData(regScriptId, vScriptKey, vScriptData, 100, operlog));
 
 	//write script data to db
@@ -100,7 +102,7 @@ void testscriptdatadb() {
 	vector<unsigned char> vScript;
 	int nValidHeight;
 	//read script content from db by scriptId
-	BOOST_CHECK(pTestView->GetScriptData(regScriptId, vScriptKey, vScript, nValidHeight));
+	BOOST_CHECK(pTestView->GetScriptData(curheight,regScriptId, vScriptKey, vScript, nValidHeight, operlog));
 	// if the readed script content equals with original
 	BOOST_CHECK(vScriptData == vScript);
 	BOOST_CHECK_EQUAL(nValidHeight, 100);
@@ -114,11 +116,11 @@ void testscriptdatadb() {
 	vector<unsigned char> vKey;
 	vKey.clear();
 	nValidHeight = 0;
-	BOOST_CHECK(pTestView->GetScriptData(regScriptId, 0, vKey, vScript, nValidHeight));
+	BOOST_CHECK(pTestView->GetScriptData(curheight,regScriptId, 0, vKey, vScript, nValidHeight, setOperLog));
 	BOOST_CHECK(vKey == vScriptKey);
 	BOOST_CHECK(vScript == vScriptData);
 	BOOST_CHECK_EQUAL(nValidHeight,100);
-	BOOST_CHECK(pTestView->GetScriptData(regScriptId, 1, vKey, vScript, nValidHeight));
+	BOOST_CHECK(pTestView->GetScriptData(curheight,regScriptId, 1, vKey, vScript, nValidHeight, setOperLog));
 	BOOST_CHECK(vKey == vScriptKey1);
 	BOOST_CHECK(vScript == vScriptData1);
 	BOOST_CHECK_EQUAL(nValidHeight,101);
@@ -126,7 +128,7 @@ void testscriptdatadb() {
 	BOOST_CHECK(pTestView->EraseScriptData(regScriptId, vScriptKey, operlog));
 	vKey.clear();
 	vScript.clear();
-	BOOST_CHECK(pTestView->GetScriptData(regScriptId, 0, vKey, vScript, nValidHeight));
+	BOOST_CHECK(pTestView->GetScriptData(curheight,regScriptId, 0, vKey, vScript, nValidHeight, setOperLog));
 	BOOST_CHECK(vKey == vScriptKey1);
 	BOOST_CHECK(vScript == vScriptData1);
 	BOOST_CHECK_EQUAL(nValidHeight,101);

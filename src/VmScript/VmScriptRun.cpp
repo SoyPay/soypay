@@ -61,7 +61,7 @@ bool CVmScriptRun::intial(shared_ptr<CBaseTransaction> & Tx, CAccountViewCache& 
 CVmScriptRun::~CVmScriptRun() {
 
 }
-tuple<bool, uint64_t, string> CVmScriptRun:: run(shared_ptr<CBaseTransaction>& Tx, CAccountViewCache& view,CScriptDBViewCache& VmDB, int nheight,
+tuple<bool, uint64_t, string> CVmScriptRun::run(shared_ptr<CBaseTransaction>& Tx, CAccountViewCache& view, CScriptDBViewCache& VmDB, int nheight,
 		uint64_t nBurnFactor) {
 
 	if(nBurnFactor == 0)
@@ -150,11 +150,16 @@ bool CVmScriptRun::CheckOperate(const vector<CVmOperate> &listoperate) const {
 		}
 		if (it.opeatortype == MINUS_FREE || it.opeatortype == MINUS_SELF_FREEZD || it.opeatortype == MINUS_FREEZD) {
 
+			/// 从冻结金额里面扣钱，超时高度必须大于当前tip高度
+			if(it.opeatortype == MINUS_FREEZD && it.outheight <height)
+			{
+				return false;
+			}
 			vector<unsigned char > accountid(it.accountid,it.accountid+sizeof(it.accountid));
 			CRegID regId(accountid);
 			CContractTransaction* secure = static_cast<CContractTransaction*>(listTx.get());
 			/// current tx's script cant't mius other script's regid
-			if(m_ScriptDBTip->HaveScript(regId) && regId.GetVec6() != boost::get<CRegID>(secure->scriptRegId).GetVec6())
+			if(m_ScriptDBTip->HaveScript(regId) && regId != boost::get<CRegID>(secure->scriptRegId))
 			{
 				return false;
 			}
@@ -212,8 +217,10 @@ bool CVmScriptRun::OpeatorAccount(const vector<CVmOperate>& listoperate, CAccoun
 			vmAccount = tem;
 		}
 		shared_ptr<CAccount> vnewAccount = GetNewAccount(tem);
+		//// 这个账号已经存在，需要合并
 		if (vnewAccount.get() != NULL) {
 			vmAccount = vnewAccount;
+			vmAccount.get()->CompactAccount(height);
 		}
 		if ((OperType) it.opeatortype == ADD_FREE) {
 			fund.nFundType = FREEDOM_FUND;
@@ -238,7 +245,13 @@ bool CVmScriptRun::OpeatorAccount(const vector<CVmOperate>& listoperate, CAccoun
 //		LogPrint("vm", "account id:%s\r\n", HexStr(accountid).c_str());
 //		LogPrint("vm", "befer account:%s\r\n", vmAccount.get()->ToString().c_str());
 //		LogPrint("vm", "fund:%s\r\n", fund.ToString().c_str());
-		bool ret = vmAccount.get()->OperateAccount((OperType)it.opeatortype,fund,height);
+		bool ret = false;
+		if(IsSignatureAccount(vmAccount.get()->regID) || vmAccount.get()->regID == boost::get<CRegID>(tx->scriptRegId))
+		{
+			ret = vmAccount.get()->OperateAccount((OperType)it.opeatortype,fund,height);
+		}else{
+			ret = vmAccount.get()->OperateAccount((OperType)it.opeatortype,fund,height,&GetScriptRegID().GetVec6(),true);
+		}
 
 //		LogPrint("vm", "after account:%s\r\n", vmAccount.get()->ToString().c_str());
 		if (!ret) {
@@ -259,6 +272,18 @@ const vector<CUserID>& CVmScriptRun::GetTxAccount()
 {
 	CContractTransaction* tx = static_cast<CContractTransaction*>(listTx.get());
 		return tx->vAccountRegId;
+}
+const BOOL CVmScriptRun::IsSignatureAccount(CRegID account)
+{
+	vector<CUserID> regid =GetTxAccount();
+
+	vector<unsigned char> item;
+	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+		for (auto& it : regid) {
+			if(account.GetVec6() == boost::get<CRegID>(it).GetVec6())
+			return true;
+		}
+		return false;
 }
 const vector<unsigned char>& CVmScriptRun::GetTxContact()
 {

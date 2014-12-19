@@ -26,14 +26,51 @@ extern Object CallRPC(const string& strMethod, const Array& params);
 extern int TestCallRPC(std::string strMethod, const std::vector<std::string> &vParams, std::string &strRet);
 extern void GetAccountInfo(char *address);
 extern void GenerateMiner();
-void CreateScript(char * vmpath)
+extern time_t sleepTime;
+extern int64_t llTime;
+int GetRandomFee() {
+	srand(time(NULL));
+	int r = (rand() % 1000000) + 1000000;
+	return r;
+}
+
+uint64_t GetPayMoney() {
+	uint64_t r = 0;
+	while(true)
+	{
+		srand(time(NULL));
+		r = (rand() % 1000002) + 100000000;
+		if(r%2 == 0 && r != 0)
+			break;
+	}
+
+	return r;
+}
+char* dest[] ={
+		  "000000000900",
+		  "000000000500",
+		  "000000000300",
+		  "000000000800",
+		  "000000000700",
+		  "000000000400",
+		  "000000000100",
+		  "000000000a00",
+		  "000000000600",
+		 "000000000200",
+
+};
+
+string CreateScript(char * vmpath,string addr,string nfee)
 {
-	int argc = 7;
-	char *argv[7] =
-			{ "rpctest", "registerscripttx", "mvVp2PDRuG4JJh6UjkJFzXUC8K5JVbMFFA","0",
-					vmpath,
-					"1000000", "2" };
-	CommandLineRPC(argc, argv);
+	std::vector<std::string> vInputParams;
+	vInputParams.push_back(addr);
+	vInputParams.push_back("0");
+	vInputParams.push_back(vmpath);
+	vInputParams.push_back(nfee);
+	vInputParams.push_back("10");
+	std::string strReturn("");
+	TestCallRPC("registerscripttx", vInputParams, strReturn);
+	return strReturn;
 }
 #pragma pack(1)
 typedef struct  {
@@ -89,27 +126,30 @@ string Parsejson(string str)
 		}else if(str_name =="hash")
 		{
 			ret = val_val.get_str();
-		}
+		}else if(str_name =="script")
+				{
+					ret = val_val.get_str();
+				}
 
 	}
 	return ret;
 }
-string CreateDarkTx()
+
+string CreateDarkTx(string scriptid,string buyeraddr,string selleraddr,string nfee,uint64_t paymoney)
 {
-	string accountid = "010000000100";
-	int argc = 8;
 	std::vector<std::string> vInputParams;
 	vInputParams.clear();
-	vInputParams.push_back("010000000100");
-	vInputParams.push_back(
-			"[\"mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5\",\"mhVJJSAdPNDPvFWCmQN446GUBPzFm8aN4y\"]");
+	vInputParams.push_back(scriptid);
+	string temp1 = "[";
+		temp1+="\""+buyeraddr+"\""+","+"\""+selleraddr+"\""+"]";
+	vInputParams.push_back(temp1);
 
 	FIRST_CONTRACT contact;
 	contact.dnType = 0x01;
-	contact.nHeight = 10;
-	contact.nPayMoney = 100;
-	CRegID regIdb("0-5");
-	CRegID regIds("0-3");
+	contact.nHeight = 1000000;
+	contact.nPayMoney = paymoney;
+	CRegID regIdb(buyeraddr) ;
+	CRegID regIds(selleraddr) ;
 	memcpy(contact.buyer,&regIdb.GetVec6().at(0),sizeof(contact.buyer));
 	memcpy(contact.seller,&regIds.GetVec6().at(0),sizeof(contact.seller));
 
@@ -118,51 +158,37 @@ string CreateDarkTx()
 	string temp = HexStr(scriptData);
 //	cout<<"first:"<<temp<<endl;
 	vInputParams.push_back(temp);
-	vInputParams.push_back("1000000");
+	vInputParams.push_back(nfee);
 	vInputParams.push_back("10");
 	std::string strReturn("");
 	if(TestCallRPC("createcontracttx", vInputParams, strReturn)){
 			strReturn= Parsejson(strReturn);
-	//		cout<<strReturn<<endl;
 			vInputParams.clear();
 			vInputParams.push_back(strReturn);
 			if (TestCallRPC("signcontracttx", vInputParams, strReturn) > 0) {
 				strReturn= Parsejson(strReturn);
 			}
 		}
-//	cout <<strReturn << endl;
 	return strReturn;
 }
-void CreateSecondDarkTx(string hash)
+string CreateSecondDarkTx(string scriptid,string hash,string buyeraddr,string nfee)
 {
-	string accountid = "010000000100";
-	int argc = 8;
 	std::vector<std::string> vInputParams;
 	vInputParams.clear();
-	vInputParams.push_back("010000000100");
-	vInputParams.push_back(
-			"[\"mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5\"]");
+	vInputParams.push_back(scriptid);
+	string temp1 = "[";
+		temp1+="\""+buyeraddr+"\""+"]";
+	vInputParams.push_back(temp1);
 
-	NEXT_CONTRACT contact;
-	contact.dnType = 0x02;
-	uint256 tx(hash.c_str());
-//	cout<<"hash:"<<hash<<endl;
-	//contact.hash = tx;
-	memcpy(contact.hash,tx.begin(),sizeof(contact.hash));
-	CDataStream scriptData(SER_DISK, CLIENT_VERSION);
-	scriptData << contact;
-	string temp = HexStr(scriptData);
 	uint256 hash1(hash.c_str());
 	string param ="02";
 	param += HexStr(hash1);
-//	cout<<"second:"<<param<<endl;
 	vInputParams.push_back(param);
-	vInputParams.push_back("1000000");
+	vInputParams.push_back(nfee);
 	vInputParams.push_back("10");
 	std::string strReturn("");
 	TestCallRPC("createcontracttx", vInputParams, strReturn);
-//	cout<<strReturn<<endl;
-	return ;
+	return strReturn;
 }
 
 typedef struct  {
@@ -206,7 +232,7 @@ void Createanony(string addr)
 
 	string temp = "";
 	CONTRACT_ANONY contact;
-	contact.nHeight = 10;
+	contact.nHeight = 1000000;
 	contact.nPayMoney = 100;
 
 
@@ -238,6 +264,51 @@ void Createanony(string addr)
 	TestCallRPC("createcontracttx", vInputParams, strReturn);
 //	cout<<strReturn<<endl;
 	return ;
+}
+
+string Createanony(string scriptid,string addr,string toaddress1,string toaddress2,string nfee,uint64_t paymoney)
+{
+	std::vector<std::string> vInputParams;
+	vInputParams.clear();
+	vInputParams.push_back(scriptid);
+	string temp1 = "[";
+	temp1+="\""+addr+"\""+"]";
+	vInputParams.push_back(temp1);
+
+	string temp = "";
+	CONTRACT_ANONY contact;
+	contact.nHeight = 10;
+	contact.nPayMoney = paymoney;
+//	cout<<"first:"<<paymoney<<endl;
+	CRegID regIdb(addr);
+	memcpy(contact.Sender,&regIdb.GetVec6().at(0),sizeof(contact.Sender));
+
+	ACCOUNT_INFO info;
+	info.nReciMoney = paymoney/2;
+//	cout<<"first:"<<info.nReciMoney<<endl;
+	CRegID regId1(toaddress1);
+	memcpy(info.account,&regId1.GetVec6().at(0),sizeof(info.account));
+
+	ACCOUNT_INFO info1;
+	info1.nReciMoney =  paymoney/2;
+	CRegID regId2(toaddress2);
+	memcpy(info1.account,&regId2.GetVec6().at(0),sizeof(info1.account));
+
+	contact.len = ::GetSerializeSize(info, SER_DISK, CLIENT_VERSION)*2;
+//	cout<<contact.len<<endl;
+	CDataStream scriptData(SER_DISK, CLIENT_VERSION);
+	scriptData << contact;
+	scriptData << info;
+	scriptData << info1;
+	temp = HexStr(scriptData);
+//	cout<<"cotx:"<<temp<<endl;
+	vInputParams.push_back(temp);
+	vInputParams.push_back(nfee);
+	vInputParams.push_back("10");
+	std::string strReturn("");
+	TestCallRPC("createcontracttx", vInputParams, strReturn);
+
+	return strReturn;
 }
 uint64_t GetValue(string str,string compare)
 {
@@ -289,10 +360,6 @@ uint64_t GetValue(string str,string compare)
 	return 0;
 }
 string GetAccountInfo1(string address) {
-	//cout << "Get Address " << address << "INFO" << endl;
-//	int argc = 3;
-//	char *argv[3] = { "rpctest", "getaccountinfo", address };
-//	CommandLineRPC(argc, argv);
 	std::vector<std::string> vInputParams;
 	vInputParams.push_back(address);
 	std::string strReturn("");
@@ -307,65 +374,196 @@ void SetBlockGenerte(string address)
 	string strReturn;
 	TestCallRPC("generateblock", vInputParams, strReturn);
 }
+string GetScript(string hash)
+{
+	std::vector<std::string> vInputParams;
+	vInputParams.push_back(hash);
+	std::string strReturn("");
+	if(TestCallRPC("getscriptid", vInputParams, strReturn) > 0)
+	{
+		strReturn = Parsejson(strReturn);
+	}
+	return strReturn;
+}
+void GetAddress(string& buyaddr,string& selleraddr)
+{
+	srand(time(NULL));
+	int i = rand() % 10;
+	int k = 0;
+	while(true)
+	{
+		k = rand() % 10;
+		if(k != i)
+			break;
+	}
+	buyaddr = dest[i];
+	selleraddr = dest[k];
+}
+
+void GetAddress(string& addr1,string& addr2,string& addr3)
+{
+	srand(time(NULL));
+	int i = rand() % 10;
+	int k = 0;
+	int d = 0;
+	while(true)
+	{
+		k = rand() % 10;
+		d = rand() % 10;
+		if(k != i && d != k && d != i)
+			break;
+	}
+	addr1 = dest[i];
+	addr2 = dest[k];
+	addr3 = dest[d];
+}
+
+void SendDarkTx(string scriptid)
+{
+	string buyaddr,selleraddr;
+	GetAddress(buyaddr,selleraddr);
+	string nfee;
+	nfee = strprintf("%d",GetRandomFee());
+	GetAddress(buyaddr,selleraddr);
+	nfee = strprintf("%d",GetRandomFee());
+	uint64_t paymoney =GetPayMoney();
+	string txhash = CreateDarkTx(scriptid,buyaddr,selleraddr,nfee,paymoney);
+
+	BOOST_CHECK(txhash != "");
+
+	GenerateMiner();
+	//// 确认交易放到block中去了
+	while(true)
+	{
+		string qhash = GetScript(txhash);
+		if(qhash != "" )
+			break;
+	}
+	if(txhash != "")
+	{
+	  string hash = CreateSecondDarkTx(scriptid,txhash,buyaddr,nfee);
+	  BOOST_CHECK(Parsejson(hash) != "");
+	}
+}
+void SendanonyTx(string scriptid)
+{
+	string sendaddr,recviaddr1,reciveaddr2;
+	GetAddress(sendaddr,recviaddr1,reciveaddr2);
+	string nfee;
+	nfee = strprintf("%d",GetRandomFee());
+	uint64_t paymoney =GetPayMoney();
+//	cout<<sendaddr<<endl;
+//	cout<<recviaddr1<<endl;
+//	cout<<reciveaddr2<<endl;
+	string txhash = Createanony(scriptid,sendaddr,recviaddr1,reciveaddr2,nfee,paymoney);
+	cout<<txhash<<endl;
+	txhash = Parsejson(txhash);
+	BOOST_CHECK(txhash != "");
+	GenerateMiner();
+	while(true)
+	{
+		string qhash = GetScript(txhash);
+		if(qhash != "" )
+			break;
+	}
+}
 BOOST_AUTO_TEST_SUITE(test_app)
+BOOST_AUTO_TEST_CASE(sendtx){
+	int64_t runTime = GetTime()+llTime;
+	vector<string> param;
+	bool flag = true;
+	string buyaddr,selleraddr;
+	GetAddress(buyaddr,selleraddr);
+	string nfee;
+	nfee = strprintf("%d",GetRandomFee());
+	string darkhash = CreateScript("D:\\bitcoin\\data\\darksecure.bin",buyaddr,nfee);
+	BOOST_CHECK(Parsejson(darkhash) != "");
 
-BOOST_AUTO_TEST_CASE(test_dark){
-	string path = "D:\\bitcoin\\data\\darksecure.bin";
-	BOOST_CHECK_MESSAGE(boost::filesystem::exists(path),path + " not exitst");
-	CreateScript((char*)path.c_str());
-	SetBlockGenerte("mfu6nTXP9LR9mRSPmnVwXUSDVQiRCBDJi7");
-	string temp = CreateDarkTx();
-	SetBlockGenerte("n4muwAThwzWvuLUh74nL3KYwujhihke1Kb");
-	string temp1 = GetAccountInfo1("010000000100");
-	BOOST_CHECK_EQUAL(GetValue(temp1,"value"),150);
-//	GetAccountInfo("mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5");
-	temp1 = GetAccountInfo1("mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5");
-	BOOST_CHECK_EQUAL(GetValue(temp1,"FreeValues"),999999999999900);
-	temp1 = GetAccountInfo1("mhVJJSAdPNDPvFWCmQN446GUBPzFm8aN4y");
-	BOOST_CHECK_EQUAL(GetValue(temp1,"FreeValues"),999999998999950);
-	CreateSecondDarkTx(temp);
-	SetBlockGenerte("mfu6nTXP9LR9mRSPmnVwXUSDVQiRCBDJi7");
-	GetAccountInfo1("010000000100");
-	GetAccountInfo1("mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5");
-	temp1 = GetAccountInfo1("mhVJJSAdPNDPvFWCmQN446GUBPzFm8aN4y");
-	BOOST_CHECK_EQUAL(GetValue(temp1,"value"),150);
+	string anonyhahs = CreateScript("D:\\bitcoin\\data\\anony.bin",buyaddr,nfee);
+	BOOST_CHECK(Parsejson(anonyhahs) != "");
+
+	GenerateMiner();
+//	cout<<"regscript"<<endl;
+//	cout<<darkhash<<endl;
+//	cout<<anonyhahs<<endl;
+	string darkscriptkid,anonyscriptid;
+	darkhash = Parsejson(darkhash);
+	anonyhahs = Parsejson(anonyhahs);
+//	cout<<darkhash<<endl;
+//	cout<<anonyhahs<<endl;
+	while(true)
+	{
+		darkscriptkid = GetScript(darkhash);
+		anonyscriptid = GetScript(anonyhahs);
+		if(darkscriptkid != "" && anonyscriptid != "")
+			break;
+	}
+	while(GetTime()<runTime) {
+		SendDarkTx(darkscriptkid);
+		cout<<"Send Darck end"<<endl;
+		Sleep(sleepTime);
+		SendanonyTx(anonyscriptid);
+		cout<<"Send SendanonyTx end"<<endl;
+		Sleep(sleepTime);
+	}
 }
-
-BOOST_AUTO_TEST_CASE(test_anony){
-
-	string path = "D:\\bitcoin\\data\\anony.bin";
-	BOOST_CHECK_MESSAGE(boost::filesystem::exists(path),path + " not exitst");
-	CreateScript((char*)path.c_str());
-	SetBlockGenerte("mfu6nTXP9LR9mRSPmnVwXUSDVQiRCBDJi7");
-//	cout<<"1"<<endl;
-	Createanony("mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5");
-	SetBlockGenerte("msdDQ1SXNmknrLuTDivmJiavu5J9VyX9fV");
-	string temp1 = GetAccountInfo1("010000000100");
-	BOOST_CHECK_EQUAL(GetValue(temp1,"value"),100);
-	temp1 = GetAccountInfo1("mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5");
-	BOOST_CHECK_EQUAL(GetValue(temp1,"FreeValues"),999999998999900);
-	temp1 = GetAccountInfo1("n4muwAThwzWvuLUh74nL3KYwujhihke1Kb");
-//	cout<<temp1<<endl;
-//	cout<<"2"<<endl;
-	Createanony("mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5");
-	SetBlockGenerte("mrjpqG4WsyjrCh8ssVs9Rp6JDini8suA7v");
-	temp1 = GetAccountInfo1("010000000100");
-	BOOST_CHECK_EQUAL(GetValue(temp1,"value"),200);
-	temp1 = GetAccountInfo1("mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5");
-	BOOST_CHECK_EQUAL(GetValue(temp1,"FreeValues"),999999997999800);
-	temp1 = GetAccountInfo1("n4muwAThwzWvuLUh74nL3KYwujhihke1Kb");
-//	cout<<temp1<<endl;
-//	cout<<"3"<<endl;
-	Createanony("mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5");
-	SetBlockGenerte("mw5wbV73gXbreYy8pX4FSb7DNYVKU3LENc");
-	temp1 = GetAccountInfo1("010000000100");
-	BOOST_CHECK_EQUAL(GetValue(temp1,"value"),100);
-	temp1 = GetAccountInfo1("mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5");
-	BOOST_CHECK_EQUAL(GetValue(temp1,"FreeValues"),999999996999700);
-	temp1 = GetAccountInfo1("mhVJJSAdPNDPvFWCmQN446GUBPzFm8aN4y");
-	BOOST_CHECK_EQUAL(GetValue(temp1,"value"),100);
-	temp1 = GetAccountInfo1("n4muwAThwzWvuLUh74nL3KYwujhihke1Kb");
-//	cout<<temp1<<endl;
-	BOOST_CHECK_EQUAL(GetValue(temp1,"value"),100);
-}
+//BOOST_AUTO_TEST_CASE(test_dark){
+//	string path = "D:\\bitcoin\\data\\darksecure.bin";
+//	BOOST_CHECK_MESSAGE(boost::filesystem::exists(path),path + " not exitst");
+//	CreateScript((char*)path.c_str());
+//	SetBlockGenerte("mfu6nTXP9LR9mRSPmnVwXUSDVQiRCBDJi7");
+//	string temp = CreateDarkTx();
+//	SetBlockGenerte("n4muwAThwzWvuLUh74nL3KYwujhihke1Kb");
+//	string temp1 = GetAccountInfo1("010000000100");
+//	BOOST_CHECK_EQUAL(GetValue(temp1,"value"),150);
+////	GetAccountInfo("mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5");
+//	temp1 = GetAccountInfo1("mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5");
+//	BOOST_CHECK_EQUAL(GetValue(temp1,"FreeValues"),999999999999900);
+//	temp1 = GetAccountInfo1("mhVJJSAdPNDPvFWCmQN446GUBPzFm8aN4y");
+//	BOOST_CHECK_EQUAL(GetValue(temp1,"FreeValues"),999999998999950);
+//	CreateSecondDarkTx(temp);
+//	SetBlockGenerte("mfu6nTXP9LR9mRSPmnVwXUSDVQiRCBDJi7");
+//	GetAccountInfo1("010000000100");
+//	GetAccountInfo1("mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5");
+//	temp1 = GetAccountInfo1("mhVJJSAdPNDPvFWCmQN446GUBPzFm8aN4y");
+//	BOOST_CHECK_EQUAL(GetValue(temp1,"value"),150);
+//}
+//
+//BOOST_AUTO_TEST_CASE(test_anony){
+//
+//	string path = "D:\\bitcoin\\data\\anony.bin";
+//	BOOST_CHECK_MESSAGE(boost::filesystem::exists(path),path + " not exitst");
+//	CreateScript((char*)path.c_str());
+//	SetBlockGenerte("mfu6nTXP9LR9mRSPmnVwXUSDVQiRCBDJi7");
+////	cout<<"1"<<endl;
+//	Createanony("mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5");
+//	SetBlockGenerte("msdDQ1SXNmknrLuTDivmJiavu5J9VyX9fV");
+//	string temp1 = GetAccountInfo1("010000000100");
+//	BOOST_CHECK_EQUAL(GetValue(temp1,"value"),100);
+//	temp1 = GetAccountInfo1("mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5");
+//	BOOST_CHECK_EQUAL(GetValue(temp1,"FreeValues"),999999998999900);
+//	temp1 = GetAccountInfo1("n4muwAThwzWvuLUh74nL3KYwujhihke1Kb");
+////	cout<<temp1<<endl;
+////	cout<<"2"<<endl;
+//	Createanony("mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5");
+//	SetBlockGenerte("mrjpqG4WsyjrCh8ssVs9Rp6JDini8suA7v");
+//	temp1 = GetAccountInfo1("010000000100");
+//	BOOST_CHECK_EQUAL(GetValue(temp1,"value"),200);
+//	temp1 = GetAccountInfo1("mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5");
+//	BOOST_CHECK_EQUAL(GetValue(temp1,"FreeValues"),999999997999800);
+//	temp1 = GetAccountInfo1("n4muwAThwzWvuLUh74nL3KYwujhihke1Kb");
+////	cout<<temp1<<endl;
+////	cout<<"3"<<endl;
+//	Createanony("mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5");
+//	SetBlockGenerte("mw5wbV73gXbreYy8pX4FSb7DNYVKU3LENc");
+//	temp1 = GetAccountInfo1("010000000100");
+//	BOOST_CHECK_EQUAL(GetValue(temp1,"value"),100);
+//	temp1 = GetAccountInfo1("mv2eqSvyUA4JeJXBQpKvJEbYY89FqoRbX5");
+//	BOOST_CHECK_EQUAL(GetValue(temp1,"FreeValues"),999999996999700);
+//	temp1 = GetAccountInfo1("mhVJJSAdPNDPvFWCmQN446GUBPzFm8aN4y");
+//	BOOST_CHECK_EQUAL(GetValue(temp1,"value"),100);
+//	temp1 = GetAccountInfo1("n4muwAThwzWvuLUh74nL3KYwujhihke1Kb");
+////	cout<<temp1<<endl;
+//	BOOST_CHECK_EQUAL(GetValue(temp1,"value"),100);
+//}
 BOOST_AUTO_TEST_SUITE_END()

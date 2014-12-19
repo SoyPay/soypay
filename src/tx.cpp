@@ -184,6 +184,7 @@ bool CRegisterAccountTx::UpdateAccount(int nIndex, CAccountViewCache &view, CVal
 	}
 	account.PublicKey = boost::get<CPubKey>(userId);
 	if (llFees > 0) {
+		account.CompactAccount(nHeight);
 		CFund fund(llFees);
 		account.OperateAccount(MINUS_FREE, fund);
 	}
@@ -291,13 +292,13 @@ bool CTransaction::UpdateAccount(int nIndex, CAccountViewCache &view, CValidatio
 
 	uint64_t minusValue = llFees + llValues;
 	CFund minusFund(minusValue);
-	sourceAccount.CompactAccount(nHeight - 1);
+	sourceAccount.CompactAccount(nHeight);
 	if (!sourceAccount.OperateAccount(MINUS_FREE, minusFund))
 		return state.DoS(100, ERROR("UpdateAccounts() : secure accounts insufficient funds"), UPDATE_ACCOUNT_FAIL,
 				"bad-read-accountdb");
 	uint64_t addValue = llValues;
 	CFund addFund(FREEDOM_FUND,addValue, nHeight);
-	desAccount.CompactAccount(nHeight - 1);
+	desAccount.CompactAccount(nHeight);
 	desAccount.OperateAccount(ADD_FREE, addFund);
 	vector<CAccount> vSecureAccounts;
 	vSecureAccounts.push_back(sourceAccount);
@@ -405,10 +406,10 @@ bool CTransaction::CheckTransction(CValidationState &state, CAccountViewCache &v
 				"bad-signscript-check");
 	}
 
-	//鑻ュ湪浜ゆ槗绱㈠紩鏁版嵁搴撲腑瀛樺湪浜ゆ槗hash锛屾浜ゆ槗宸茬粡琚‘璁よ繃锛屾棤椤绘鏌�
+	//���ڽ����������ݿ��д��ڽ���hash���˽����Ѿ���ȷ�Ϲ���������
 	CDiskTxPos postx;
 	if (!pblocktree->ReadTxIndex(GetHash(), postx)) {
-		//濡傛灉鏄氦鏄撹纭杩涘叆block涓椂锛岃嫢鐩殑鍦板潃涓簁eyId鏃跺繀椤绘槸鏈敞鍐岃处鎴�
+		//	//����ǽ��ױ�ȷ�Ͻ���block��ʱ����Ŀ�ĵ�ַΪkeyIdʱ������δע���˻�
 			CAccount acctDesInfo;
 			if (desUserId.type() == typeid(CKeyID)) {
 				if (view.GetAccount(desUserId, acctDesInfo) && acctDesInfo.IsRegister()) {
@@ -436,7 +437,7 @@ bool CContractTransaction::UpdateAccount(int nIndex, CAccountViewCache &view, CV
 		return state.DoS(100,
 				ERROR("UpdateAccounts() : read source addr %s account info error", HexStr(id.GetID())),
 				UPDATE_ACCOUNT_FAIL, "bad-read-accountdb");
-	sourceAccount.CompactAccount(nHeight - 1);
+	sourceAccount.CompactAccount(nHeight);
 	if (!sourceAccount.OperateAccount(MINUS_FREE, minusFund))
 		return state.DoS(100, ERROR("UpdateAccounts() : secure accounts insufficient funds"), UPDATE_ACCOUNT_FAIL,
 				"bad-read-accountdb");
@@ -446,7 +447,7 @@ bool CContractTransaction::UpdateAccount(int nIndex, CAccountViewCache &view, CV
 				UPDATE_ACCOUNT_FAIL, "bad-write-accountdb");
 
 	}
-	//鎵ｅ噺灏忚垂鏃ュ織
+	//�ۼ�С����־
 	txundo.vAccountOperLog.push_back(sourceAccount.accountOperLog);
 
 	CVmScriptRun vmRun;
@@ -477,26 +478,28 @@ bool CContractTransaction::UpdateAccount(int nIndex, CAccountViewCache &view, CV
 }
 bool CContractTransaction::UndoUpdateAccount(int nIndex, CAccountViewCache &view, CValidationState &state,
 		CTxUndo &txundo, int nHeight, CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache) {
-
-	for(auto & operacctlog : txundo.vAccountOperLog) {
+	vector<CAccountOperLog>::reverse_iterator rIterAccountLog = txundo.vAccountOperLog.rbegin();
+	for(; rIterAccountLog != txundo.vAccountOperLog.rend(); ++rIterAccountLog) {
 		CAccount account;
-		CUserID userId = operacctlog.keyID;
+		CUserID userId = rIterAccountLog->keyID;
 		if(!view.GetAccount(userId, account))  {
 			return state.DoS(100,
 							ERROR("UpdateAccounts() : ContractTransaction undo updateaccount read accountId= %s account info error"),
 							UPDATE_ACCOUNT_FAIL, "bad-read-accountdb");
 		}
-		account.UndoOperateAccount(operacctlog);
+		account.UndoOperateAccount(*rIterAccountLog);
 		if(!view.SetAccount(userId, account)) {
 			return state.DoS(100,
 					ERROR("UpdateAccounts() : ContractTransaction undo updateaccount write accountId= %s account info error"),
 					UPDATE_ACCOUNT_FAIL, "bad-write-accountdb");
 		}
 	}
-	for(auto &operlog : txundo.vScriptOperLog)
-		if(!scriptCache.SetData(operlog.vKey, operlog.vValue))
+	vector<CScriptDBOperLog>::reverse_iterator rIterScriptDBLog = txundo.vScriptOperLog.rbegin();
+	for(; rIterScriptDBLog != txundo.vScriptOperLog.rend(); ++rIterScriptDBLog) {
+		if(!scriptCache.UndoScriptData(rIterScriptDBLog->vKey, rIterScriptDBLog->vValue))
 			return state.DoS(100,
 					ERROR("UpdateAccounts() : ContractTransaction undo scriptdb data error"), UPDATE_ACCOUNT_FAIL, "bad-save-scriptdb");
+	}
 	return true;
 }
 
@@ -570,22 +573,10 @@ bool CContractTransaction::CheckTransction(CValidationState &state, CAccountView
 		}
 	}
 
-	//for VerifyDB checkblock return true
-	if (pTxCacheTip->IsContainTx(GetHash())) {
-		return true;
-	}
-
-	CVmScriptRun vmRun;
-	std::shared_ptr<CBaseTransaction> pTx = GetNewInstance();
-
-	CScriptDBViewCache scriptDBCache(*pScriptDBTip, true);
-	uint64_t el = GetElementForBurn(chainActive.Tip());
-	tuple<bool, uint64_t, string> ret = vmRun.run(pTx, view, scriptDBCache, chainActive.Height() +1, el);
-
-	if (!std::get<0>(ret))
-		return state.DoS(100,
-				ERROR("CheckTransaction() : ContractTransaction txhash=%s run script error,%s",
-						GetHash().GetHex(), std::get<2>(ret)), UPDATE_ACCOUNT_FAIL, "run-script-error");
+//	//for VerifyDB checkblock return true
+//	if (pTxCacheTip->IsContainTx(GetHash())) {
+//		return true;
+//	}
 	return true;
 }
 
@@ -599,7 +590,7 @@ bool CFreezeTransaction::UpdateAccount(int nIndex, CAccountViewCache &view, CVal
 		return state.DoS(100, ERROR("UpdateAccounts() : read source addr %s account info error", HexStr(id.GetID())),
 				UPDATE_ACCOUNT_FAIL, "bad-read-accountdb");
 	}
-	secureAccount.CompactAccount(nHeight - 1);
+	secureAccount.CompactAccount(nHeight);
 	CFund minusFund(minusValue);
 	if (!secureAccount.OperateAccount(MINUS_FREE, minusFund))
 		return state.DoS(100, ERROR("UpdateAccounts() : secure accounts insufficient funds"), UPDATE_ACCOUNT_FAIL,
@@ -683,6 +674,7 @@ bool CRewardTransaction::UpdateAccount(int nIndex, CAccountViewCache &view, CVal
 				UPDATE_ACCOUNT_FAIL, "bad-read-accountdb");
 	}
 //	LogPrint("INFO", "before rewardtx confirm account:%s\n", acctInfo.ToString());
+	acctInfo.CompactAccount(nHeight);
 	acctInfo.ClearAccPos(GetHash(), nHeight - 1, SysCfg().GetIntervalPos());
 	CFund fund(REWARD_FUND,rewardValue, nHeight);
 	acctInfo.OperateAccount(ADD_FREE, fund);
@@ -745,7 +737,7 @@ bool CRewardTransaction::CheckTransction(CValidationState &state, CAccountViewCa
 	return true;
 }
 
-bool CRegistScriptTx::UpdateAccount(int nIndex, CAccountViewCache &view, CValidationState &state, CTxUndo &txundo,
+bool CRegistScriptTx::UpdateAccount(int nIndex, CAccountViewCache &view,CValidationState &state, CTxUndo &txundo,
 		int nHeight, CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache) {
 	LogPrint("INFO" ,"registscript UpdateAccount\n");
 	CID id(regAccountId);
@@ -757,6 +749,7 @@ bool CRegistScriptTx::UpdateAccount(int nIndex, CAccountViewCache &view, CValida
 
 	uint64_t minusValue = llFees;
 	if (minusValue > 0) {
+		acctInfo.CompactAccount(nHeight);
 		CFund fund(minusValue);
 		acctInfo.OperateAccount(MINUS_FREE, fund);
 		txundo.vAccountOperLog.push_back(acctInfo.accountOperLog);
@@ -958,8 +951,13 @@ Object CFund::ToJosnObj() const
 }
 
 string CFund::ToString() const {
-
-	return  write_string(Value(ToJosnObj()),true);
+	string str;
+	static const string fundTypeArray[] = { "NULL_FUNDTYPE", "FREEDOM", "REWARD_FUND", "FREEDOM_FUND", "IN_FREEZD_FUND",
+			"OUT_FREEZD_FUND", "SELF_FREEZD_FUND" };
+	str += strprintf("            nType=%s, uTxHash=%s, value=%ld, nHeight=%d\n",
+	fundTypeArray[nFundType], HexStr(scriptID).c_str(), value, nHeight);
+	return str;
+//	return write_string(Value(ToJosnObj()),true);
 }
 
 string COperFund::ToString() const {
@@ -996,7 +994,12 @@ string CTxUndo::ToString() const {
 	for (; iterLog != vAccountOperLog.end(); ++iterLog) {
 		str += iterLog->ToString();
 	}
-	return str;
+	vector<CScriptDBOperLog>::const_iterator iterDbLog = vScriptOperLog.begin();
+	string strDbLog(" list script db oper Log:\n");
+	for	(; iterDbLog !=  vScriptOperLog.end(); ++iterDbLog) {
+		strDbLog += iterDbLog->ToString();
+	}
+	return str+strDbLog;
 }
 
 bool CTxUndo::GetAccountOperLog(const CKeyID &keyId, CAccountOperLog &accountOperLog) {
@@ -1011,6 +1014,9 @@ bool CTxUndo::GetAccountOperLog(const CKeyID &keyId, CAccountOperLog &accountOpe
 }
 
 void CAccount::CompactAccount(int nCurHeight) {
+	if (nCurHeight<=0) {
+		return ;
+	}
 	MergerFund(vRewardFund, nCurHeight);
 	MergerFund(vFreeze, nCurHeight);
 	MergerFund(vSelfFreeze, nCurHeight);
@@ -1065,16 +1071,16 @@ void CAccount::MergerFund(vector<CFund> &vFund, int nCurHeight) {
 }
 
 void CAccount::WriteOperLog(const COperFund &operLog) {
-	for(auto item:operLog.vFund)
-	{
-		LogPrint("key","keyid:%s\n",HexStr(keyID).c_str());
-		LogPrint("key"," type is:%d,fund:%s\n",static_cast<int>(operLog.operType),item.ToString().c_str());
+//	for(auto item:operLog.vFund)
+//	{
+//		LogPrint("key","keyid:%s\n",HexStr(keyID).c_str());
+//		LogPrint("key"," type is:%d,fund:%s\n",static_cast<int>(operLog.operType),item.ToString().c_str());
 //		string s("9f2faa80029ee70f87819c283f5e96aa0e83d421");
 //		if (keyID == uint160(s) )
 //		cout<<"height is "<<item.nHeight<<
 //				" type is: "<<static_cast<int>(operLog.operType)<<" value is: "<<item.value<<
 //				" fund type is: "<<static_cast<int>(item.nFundType) <<" scriptID is: "<<HexStr(item.scriptID).c_str()<<endl;
-	}
+//	}
 
 	accountOperLog.InsertOperateLog(operLog);
 }
@@ -1486,6 +1492,8 @@ bool CAccount::MinusFreezed(const CFund& fund) {
 		return false;
 	}
 
+	assert(it->nHeight > chainActive.Height());
+
 	if (fund.value > it->value) {
 		return false;
 	} else {
@@ -1641,10 +1649,6 @@ bool CAccount::IsFundValid(OperType type, const CFund &fund, int nHeight, const 
 
 			if (accountOperLog.authorLog.GetScriptID() != *pscriptID)
 				accountOperLog.authorLog.SetScriptID(*pscriptID);
-
-			if (0 == accountOperLog.authorLog.GetLastOperHeight()) {
-
-			}
 		}
 		break;
 	}
@@ -1660,6 +1664,7 @@ bool CAccount::IsFundValid(OperType type, const CFund &fund, int nHeight, const 
 bool CAccount::OperateAccount(OperType type, const CFund &fund, int nHeight,
 		const vector_unsigned_char* pscriptID,
 		bool bCheckAuthorized) {
+	assert(IsCompacted(nHeight));
 	assert(keyID != uint160(0));
 	if (keyID != accountOperLog.keyID)
 		accountOperLog.keyID = keyID;
@@ -1795,6 +1800,17 @@ bool CAccount::GetUserData(const vector_unsigned_char& scriptID, vector<unsigned
 	return true;
 }
 
+uint256 CAccount::GetHash() const {
+	return SerializeHash(*this);
+}
+
+bool CAccount::IsCompacted(int nCurRunTimeHeight) {
+	uint256 beforeHash = GetHash();
+	CompactAccount(nCurRunTimeHeight);
+	uint256 afterHash = GetHash();
+	bool bRet = (beforeHash == afterHash);
+	return bRet;
+}
 
 void CRegID::SetRegID(const vector<unsigned char>& vIn) {
 	assert(vIn.size() == 6);
@@ -1837,7 +1853,7 @@ CAuthorizate::CAuthorizate(CNetAuthorizate te) {
 	nMaxMoneyTotal = te.GetMaxMoneyTotal();
 	nMaxMoneyPerDay = te.GetMaxMoneyPerDay();
 	nLastOperHeight = 0;
-	nCurMaxMoneyPerDay = 0;
+	nCurMaxMoneyPerDay = te.GetMaxMoneyPerDay();
 }
 
 unsigned int CAuthorizate::GetSerializeSize(int nType, int nVersion) const {

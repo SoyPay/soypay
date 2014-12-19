@@ -11,7 +11,7 @@
 #include "net.h"
 
 #include "wallet.h"
-
+extern CWallet* pwalletMain;
 //////////////////////////////////////////////////////////////////////////////
 //
 // SoyPayMiner
@@ -34,22 +34,22 @@ int static FormatHashBlocks(void* pbuffer, unsigned int len) {
 static const unsigned int pSHA256InitState[8] = { 0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f,
 		0x9b05688c, 0x1f83d9ab, 0x5be0cd19 };
 
-void SHA256Transform(void* pstate, void* pinput, const void* pinit) {
-	SHA256_CTX ctx;
-	unsigned char data[64];
-
-	SHA256_Init(&ctx);
-
-	for (int i = 0; i < 16; i++)
-		((uint32_t*) data)[i] = ByteReverse(((uint32_t*) pinput)[i]);
-
-	for (int i = 0; i < 8; i++)
-		ctx.h[i] = ((uint32_t*) pinit)[i];
-
-	SHA256_Update(&ctx, data, sizeof(data));
-	for (int i = 0; i < 8; i++)
-		((uint32_t*) pstate)[i] = ctx.h[i];
-}
+//void SHA256Transform(void* pstate, void* pinput, const void* pinit) {
+//	SHA256_CTX ctx;
+//	unsigned char data[64];
+//
+//	SHA256_Init(&ctx);
+//
+//	for (int i = 0; i < 16; i++)
+//		((uint32_t*) data)[i] = ByteReverse(((uint32_t*) pinput)[i]);
+//
+//	for (int i = 0; i < 8; i++)
+//		ctx.h[i] = ((uint32_t*) pinit)[i];
+//
+//	SHA256_Update(&ctx, data, sizeof(data));
+//	for (int i = 0; i < 8; i++)
+//		((uint32_t*) pstate)[i] = ctx.h[i];
+//}
 
 // Some explaining would be appreciated
 class COrphan {
@@ -330,95 +330,6 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& 
 	pblock->hashMerkleRoot = pblock->BuildMerkleTree();
 }
 
-void FormatHashBuffers(CBlock* pblock, char* pmidstate, char* pdata, char* phash1) {
-	//
-	// Pre-build hash buffers
-	//
-	struct {
-		struct unnamed2 {
-			int nVersion;
-			uint256 hashPrevBlock;
-			uint256 hashMerkleRoot;
-			unsigned int nTime;
-			unsigned int nBits;
-			unsigned int nNonce;
-		} block;
-		unsigned char pchPadding0[64];
-		uint256 hash1;
-		unsigned char pchPadding1[64];
-	} tmp;
-	memset(&tmp, 0, sizeof(tmp));
-
-	tmp.block.nVersion = pblock->nVersion;
-	tmp.block.hashPrevBlock = pblock->hashPrevBlock;
-	tmp.block.hashMerkleRoot = pblock->hashMerkleRoot;
-	tmp.block.nTime = pblock->nTime;
-	tmp.block.nBits = pblock->nBits;
-	tmp.block.nNonce = pblock->nNonce;
-
-	FormatHashBlocks(&tmp.block, sizeof(tmp.block));
-	FormatHashBlocks(&tmp.hash1, sizeof(tmp.hash1));
-
-	// Byte swap all the input buffer
-	for (unsigned int i = 0; i < sizeof(tmp) / 4; i++)
-		((unsigned int*) &tmp)[i] = ByteReverse(((unsigned int*) &tmp)[i]);
-
-	// Precalc the first half of the first hash, which stays constant
-	SHA256Transform(pmidstate, &tmp.block, pSHA256InitState);
-
-	memcpy(pdata, &tmp.block, 128);
-	memcpy(phash1, &tmp.hash1, 64);
-}
-
-
-//////////////////////////////////////////////////////////////////////////////
-//
-// Internal miner
-//
-double dHashesPerSec = 0.0;
-int64_t nHPSTimerStart = 0;
-
-//
-// ScanHash scans nonces looking for a hash with at least some zero bits.
-// It operates on big endian data.  Caller does the byte reversing.
-// All input buffers are 16-byte aligned.  nNonce is usually preserved
-// between calls, but periodically or if nNonce is 0xffff0000 or above,
-// the block is rebuilt and nNonce starts over at zero.
-//
-unsigned int static ScanHash_CryptoPP(char* pmidstate, char* pdata, char* phash1, char* phash,
-		unsigned int& nHashesDone) {
-	unsigned int& nNonce = *(unsigned int*) (pdata + 12);
-	for (;;) {
-		// Crypto++ SHA256
-		// Hash pdata using pmidstate as the starting state into
-		// pre-formatted buffer phash1, then hash phash1 into phash
-		nNonce++;
-		SHA256Transform(phash1, pdata, pmidstate);
-		SHA256Transform(phash, phash1, pSHA256InitState);
-
-		// Return the nonce if the hash has at least some zero bits,
-		// caller will check if it has enough to reach the target
-		if (((unsigned short*) phash)[14] == 0)
-			return nNonce;
-
-		// If nothing found after trying for a while, return -1
-		if ((nNonce & 0xffff) == 0) {
-			nHashesDone = 0xffff + 1;
-			return (unsigned int) -1;
-		}
-		if ((nNonce & 0xfff) == 0)
-			boost::this_thread::interruption_point();
-	}
-}
-
-//CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey) {
-//	CPubKey pubkey;
-//	if (!reservekey.GetReservedKey(pubkey))
-//		return NULL;
-//
-//	CScript scriptPubKey = CScript() << pubkey << OP_CHECKSIG;
-//	return CreateNewBlock(scriptPubKey);
-//}
 
 struct CAccountComparator {
 	bool operator()(const CAccount &a, const CAccount&b) {
@@ -472,17 +383,18 @@ uint256 GetAdjustHash(const uint256 TargetHash, const uint64_t nPos) {
 
 	return adjusthash;
 }
-extern CWallet* pwalletMain;
+
 bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCreateKey) {
 	set<CKeyID> setKeyID;
 	CAccount acctInfo;
 	set<CAccount, CAccountComparator> setAcctInfo;
 
+	LogPrint("INFO","CreatePosTx block time:%d\n",  pBlock->nTime);
+
 	{
 		LOCK2(cs_main, pwalletMain->cs_wallet);
-		pwalletMain->GetKeyIds(setKeyID); //get addrs
-		if (setKeyID.empty()) {
-			LogPrint("INFO","CreatePosTx setKeyID empty\n");
+		if (!pwalletMain->GetKeyIds(setKeyID,true)) {
+			LogPrint("ERROR","CreatePosTx setKeyID empty\n");
 			return false;
 		}
 
@@ -493,7 +405,7 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 			for (unsigned int i = 1; i < pBlock->vptx.size(); i++) {
 				shared_ptr<CBaseTransaction> pBaseTx = pBlock->vptx[i];
 				if (txCacheTemp.IsContainTx(pBaseTx->GetHash())) {
-					LogPrint("INFO","CreatePosTx duplicate tx\n");
+					LogPrint("ERROR","CreatePosTx duplicate tx hash:%s\n", pBaseTx->GetHash().GetHex());
 					mempool.mapTx.erase(pBaseTx->GetHash());
 					return false;
 				}
@@ -501,7 +413,7 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 				CValidationState state;
 
 				if (!pBaseTx->UpdateAccount(i, accView, state, txundo, pPrevIndex->nHeight + 1, txCacheTemp, contractScriptTemp)) {
-					LogPrint("INFO","tx hash:%s transaction is invalid\n", pBaseTx->GetHash().GetHex());
+					LogPrint("ERROR","tx hash:%s transaction is invalid\n", pBaseTx->GetHash().GetHex());
 
 					mempool.mapTx.erase(pBaseTx->GetHash());
 					return false;
@@ -513,10 +425,8 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 			//find CAccount info by keyid
 			if(setCreateKey.size()) {
 				bool bfind = false;
-				for(auto &item: setCreateKey)
-				{
-					if(item == keyid)
-					{
+				for(auto &item: setCreateKey){
+					if(item == keyid){
 						bfind = true;
 						break;
 					}
@@ -535,11 +445,11 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 
 	if (setAcctInfo.empty()) {
 		setCreateKey.clear();
-		LogPrint("INFO","CreatePosTx setSecureAcc empty\n");
+		LogPrint("ERROR","CreatePosTx setSecureAcc empty\n");
 		return false;
 	}
 
-	uint64_t maxNonce = SysCfg().GetArg("-blockmaxnonce", 10000); //cacul times
+	uint64_t maxNonce = SysCfg().GetBlockMaxNonce(); //cacul times
 
 	uint256 prevblockhash = pPrevIndex->GetBlockHash();
 	const uint256 targetHash = CBigNum().SetCompact(pBlock->nBits).getuint256(); //target hash difficult
@@ -549,7 +459,7 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 		uint64_t posacc = item.GetAccountPos(pPrevIndex->nHeight);
 		if (posacc == 0) //have no pos
 				{
-			LogPrint("INFO","CreatePosTx posacc zero\n");
+			LogPrint("ERROR","CreatePosTx posacc zero\n");
 			continue;
 		}
 
@@ -599,39 +509,38 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 //				LogPrint("Hash", "nNonce:%s\n", str.c_str());
 //				printf("curhash smaller then adjusthash\r\n");
 				CRegID regid;
-				CKey key;
 
-				if (pwalletMain->GetKey(item.keyID, key,true) && pAccountViewTip->GetRegId(item.keyID, regid)) {
+				if (pAccountViewTip->GetRegId(item.keyID, regid)) {
 					CRewardTransaction *prtx = (CRewardTransaction *) pBlock->vptx[0].get();
 					prtx->rewardValue += item.GetInterest();
 					prtx->account = regid;
 					prtx->nHeight = pPrevIndex->nHeight+1;
 					pBlock->hashMerkleRoot = pBlock->BuildMerkleTree();
-					vector<unsigned char> vRegId = regid.GetVec6();
-					printf("CreatePosTx addr = %s \nhight:%d time:%s\r\n\n",item.keyID.ToAddress().c_str(),prtx->nHeight,DateTimeStrFormat("%Y-%m-%d %H:%M:%S", GetTime()).c_str());
-					LogPrint("postx", "find pos tx hash succeed: \n"
+					LogPrint("MINER","Miner hight:%d time:%s addr = %s \r\n",prtx->nHeight,DateTimeStrFormat("%Y-%m-%d %H:%M:%S", GetTime()),item.keyID.ToAddress());
+					LogPrint("INFO", "find pos tx hash succeed: \n"
 									  "   pos hash:%s \n"
 									  "adjust hash:%s \r\n", curhash.GetHex(), adjusthash.GetHex());
-					LogPrint("postx",
+					LogPrint("INFO",
 							"nVersion=%d, hashPreBlock=%s, hashMerkleRoot=%s, nValue=%ld, nTime=%ld, nNonce=%ld\n",
 							postxinfo.nVersion, postxinfo.hashPrevBlock.GetHex(), postxinfo.hashMerkleRoot.GetHex(),
 							postxinfo.nValues, postxinfo.nTime, postxinfo.nNonce);
 //					cout << "miner block hash:" << pBlock->SignatureHash().GetHex() << endl;
 //					cout << "miner regId :" << regid.ToString() << endl;
-					CPubKey tep = key.GetPubKey();
-					assert(tep == item.PublicKey);
 //					cout << "miner keyid's pubkey:" << HexStr(tep.begin(),tep.end()) << endl;
 //					cout << "miner item's accont:" << item.ToString() << endl;
 
-					if (key.Sign(pBlock->SignatureHash(), pBlock->vSignature)) {
+					if (pwalletMain->Sign(item.keyID,pBlock->SignatureHash(), pBlock->vSignature,true)) {
 //						cout << "miner signature:" << HexStr(pBlock->vSignature) << endl;
+						LogPrint("INFO","Create new block,hash:%s\n", pBlock->GetHash().GetHex());
 						return true;
 					} else {
 						LogPrint("ERROR", "sign fail\r\n");
 					}
+
 				} else {
 					LogPrint("ERROR", "GetKey fail or GetVec6 fail\r\n");
 				}
+
 			}
 		}
 	}
@@ -641,7 +550,7 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 
 bool VerifyPosTx(const CBlockIndex *pPrevIndex, CAccountViewCache &accView, const CBlock *pBlock, uint64_t &nInterest, CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache, bool bJustCheckSign) {
 
-	uint64_t maxNonce = SysCfg().GetArg("-blockmaxnonce", 10000); //cacul times
+	uint64_t maxNonce = SysCfg().GetBlockMaxNonce(); //cacul times
 
 	if (pBlock->nNonce > maxNonce) {
 		LogPrint("ERROR", "Nonce is larger than maxNonce\r\n");
@@ -862,10 +771,10 @@ CBlockTemplate* CreateNewBlock() {
 
 			CTxUndo txundo;
 			CValidationState state;
-			if (!pBaseTx->UpdateAccount(nBlockTx + 1, accviewtemp, state, txundo, pIndexPrev->nHeight + 1, txCacheTemp, contractScriptTemp)) {
+			if (!pBaseTx->UpdateAccount(nBlockTx + 1, accviewtemp, state, txundo, pIndexPrev->nHeight + 1,
+					txCacheTemp, contractScriptTemp)) {
 				continue;
 			}
-			accview = accviewtemp;
 			nBlockTx++;
 			pblock->vptx.push_back(stx);
 			nFees += pBaseTx->GetFee();
@@ -906,7 +815,7 @@ bool CheckWork(CBlock* pblock, CWallet& wallet) {
 	{
 		LOCK(cs_main);
 		if (pblock->hashPrevBlock != chainActive.Tip()->GetBlockHash())
-			return ERROR("BitcoinMiner : generated block is stale");
+			return ERROR("SoypayMiner : generated block is stale");
 
 		// Remove key from key pool
 	//	reservekey.KeepKey();
@@ -920,7 +829,7 @@ bool CheckWork(CBlock* pblock, CWallet& wallet) {
 		// Process this block the same as if we had received it from another node
 		CValidationState state;
 		if (!ProcessBlock(state, NULL, pblock))
-			return ERROR("BitcoinMiner : ProcessBlock, block not accepted");
+			return ERROR("SoypayMiner : ProcessBlock, block not accepted");
 	}
 
 	return true;
@@ -928,11 +837,21 @@ bool CheckWork(CBlock* pblock, CWallet& wallet) {
 
 void static SoypayMiner(CWallet *pwallet) {
 	LogPrint("INFO","Miner started\n");
+
 	SetThreadPriority(THREAD_PRIORITY_LOWEST);
 	RenameThread("soypay-miner");
 
-	// Each thread has its own key and counter
-	unsigned int nExtraNonce = 0;
+	{
+		LOCK2(cs_main, pwalletMain->cs_wallet);
+		set<CKeyID> dummy;
+		if (!pwalletMain->GetKeyIds(dummy, true)) {
+			LogPrint("INFO","SoypayMiner  terminated\n");
+		    ERROR("ERROR:%s ", "no key for minering\n");
+		    throw ;
+		}
+
+	}
+
 
 	try {
 		while (true) {
@@ -953,14 +872,26 @@ void static SoypayMiner(CWallet *pwallet) {
 			if (!pblocktemplate.get())
 				return;
 			CBlock *pblock = &pblocktemplate.get()->block;
-
 			int64_t nStart = GetTime();
-			while (true) {
 
-				pblock->nTime = max(pindexPrev->GetMedianTimePast() + 1, GetAdjustedTime());
+
+
+
+			while (true) {
+				unsigned int lasttime = 0xFFFFFFFF;
+				//获取时间 同时等待下次时间到
+				auto GetNextTimeAndSleep = [&]() {
+					while(max(pindexPrev->GetMedianTimePast() + 1, GetAdjustedTime()) == lasttime)
+					{
+						::MilliSleep(800);
+					}
+					return (lasttime = max(pindexPrev->GetMedianTimePast() + 1, GetAdjustedTime()));
+				};
+
+				pblock->nTime = GetNextTimeAndSleep();	// max(pindexPrev->GetMedianTimePast() + 1, GetAdjustedTime());
 				set<CKeyID> setCreateKey;
 				setCreateKey.clear();
-				if (CreatePosTx(pindexPrev, pblock,setCreateKey)) {
+				if (CreatePosTx(pindexPrev, pblock, setCreateKey)) {
 
 					SetThreadPriority(THREAD_PRIORITY_NORMAL);
 					CheckWork(pblock, *pwallet);
@@ -968,12 +899,12 @@ void static SoypayMiner(CWallet *pwallet) {
 
 					if (SysCfg().NetworkID() == CBaseParams::REGTEST)
 						throw boost::thread_interrupted();
-					::MilliSleep(800);
+//					::MilliSleep(800);
 					break;
 				}
-				else
-					break;
-				::MilliSleep(800);
+//				else
+//					break;
+//				::MilliSleep(800);
 
 				// Check for stop or if block needs to be rebuilt
 				boost::this_thread::interruption_point();
@@ -986,7 +917,7 @@ void static SoypayMiner(CWallet *pwallet) {
 			}
 		}
 	} catch (boost::thread_interrupted) {
-		LogPrint("INFO","BitcoinMiner terminated\n");
+		LogPrint("INFO","SoypayMiner  terminated\n");
 		throw;
 	}
 }
@@ -1015,7 +946,7 @@ uint256 CreateBlockWithAppointedAddr(CKeyID const &keyID)
 			}
 			if(setCreateKey.empty())
 			{
-				LogPrint("postx", "%s is not exist in the wallet\r\n",CSoyPayAddress(keyID).ToString().c_str());
+				LogPrint("postx", "%s is not exist in the wallet\r\n",keyID.ToAddress());
 				break;
 			}
 			::MilliSleep(1);
@@ -1028,15 +959,17 @@ uint256 CreateBlockWithAppointedAddr(CKeyID const &keyID)
 	return uint256(0);
 }
 
-void GenerateBitcoins(bool fGenerate, CWallet* pwallet, int nThreads) {
+void GenerateSoys(bool fGenerate, CWallet* pwallet, int nThreads) {
 	static boost::thread_group* minerThreads = NULL;
 
-	if (nThreads < 0) {
-		if (SysCfg().NetworkID() == CBaseParams::REGTEST)
-			nThreads = 1;
-		else
-			nThreads = boost::thread::hardware_concurrency();
+	if (nThreads != 0) {//in pos system one thread is enough  marked by ranger.shi
+		nThreads = 1;
+//		if (SysCfg().NetworkID() == CBaseParams::REGTEST)
+//			nThreads = 1;
+//		else
+//			nThreads = boost::thread::hardware_concurrency();
 	}
+
 
 	if (minerThreads != NULL) {
 		minerThreads->interrupt_all();

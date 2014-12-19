@@ -100,12 +100,17 @@ static void GetParaData(unsigned char * &pbuf, unsigned char * &pdata, unsigned 
 }
 static bool GetData(unsigned char * ipara, vector<std::shared_ptr < std::vector<unsigned char> > > &ret) {
 	int totallen = GetParaLen(ipara);
-	assert(totallen >= 0);
+	//assert(totallen >= 0);
+	if(totallen <= 0)
+	{
+		return false;
+	}
+
 	while (totallen > 0) {
 		unsigned short length = GetParaLen(ipara);
 		totallen -= (length + 2);
-		assert(totallen >= 0);
-		if (totallen < 0) {
+//		assert(totallen >= 0);
+		if (length <=0) {
 			return false;
 		}
 		ret.insert(ret.end(),std::make_shared<vector<unsigned char>>(ipara, ipara + length));
@@ -118,9 +123,14 @@ static bool GetData(unsigned char * ipara, vector<std::shared_ptr < std::vector<
 
 static RET_DEFINE ExInt64CompFunc(unsigned char *ipara,void * pVmScriptRun) {
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 2);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 2);
+	 if(!GetData(ipara,retdata) || retdata.size() != 2||
+	    	retdata.at(0).get()->size() != sizeof(int64_t)||retdata.at(1).get()->size() != sizeof(int64_t))
+	    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	int64_t m1, m2;
 	unsigned char rslt;
 	memcpy(&m1,  &retdata.at(0).get()->at(0), sizeof(m1));
@@ -154,8 +164,14 @@ static RET_DEFINE ExInt64CompFunc(unsigned char *ipara,void * pVmScriptRun) {
 
 static RET_DEFINE ExInt64MullFunc(unsigned char *ipara,void * pVmScriptRun) {
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 2);
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 2);
+	 if(!GetData(ipara,retdata) ||retdata.size() != 2||
+	        	retdata.at(0).get()->size() != sizeof(int64_t)||retdata.at(1).get()->size() != sizeof(int64_t))
+	    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	//	printf("the call func:%s\r\n", __FUNCTION__);
 
 //	unsigned char *pbuf = ipara;
@@ -191,9 +207,14 @@ static RET_DEFINE ExInt64MullFunc(unsigned char *ipara,void * pVmScriptRun) {
 
 static RET_DEFINE ExInt64AddFunc(unsigned char *ipara,void * pVmScriptRun) {
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 2);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 2);
+    if(!GetData(ipara,retdata) ||retdata.size() != 2||
+        retdata.at(0).get()->size() != sizeof(int64_t)||retdata.at(1).get()->size() != sizeof(int64_t))
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 //	//	printf("the call func:%s\r\n", __FUNCTION__);
 //	unsigned char *pbuf = ipara;
 //	unsigned short len = GetParaLen(pbuf);
@@ -231,8 +252,14 @@ static RET_DEFINE ExInt64AddFunc(unsigned char *ipara,void * pVmScriptRun) {
 
 static RET_DEFINE ExInt64SubFunc(unsigned char *ipara,void * pVmScriptRun) {
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 2);
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 2);
+    if(!GetData(ipara,retdata) ||retdata.size() != 2||
+            retdata.at(0).get()->size() != sizeof(int64_t)||retdata.at(1).get()->size() != sizeof(int64_t))
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	//	printf("the call func:%s\r\n", __FUNCTION__);
 
 //	unsigned char *pbuf = ipara;
@@ -271,9 +298,14 @@ static RET_DEFINE ExInt64SubFunc(unsigned char *ipara,void * pVmScriptRun) {
 
 static RET_DEFINE ExInt64DivFunc(unsigned char *ipara,void * pVmScriptRun) {
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 2);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 2);
+    if(!GetData(ipara,retdata) ||retdata.size() != 2||
+            retdata.at(0).get()->size() != sizeof(int64_t)||retdata.at(1).get()->size() != sizeof(int64_t))
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	//	printf("the call func:%s\r\n", __FUNCTION__);
 
 //	unsigned char *pbuf = ipara;
@@ -315,9 +347,13 @@ static RET_DEFINE ExInt64DivFunc(unsigned char *ipara,void * pVmScriptRun) {
 
 static RET_DEFINE ExSha256Func(unsigned char *ipara,void * pVmScriptRun) {
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 1);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 1);
+    if(!GetData(ipara,retdata) ||retdata.size() != 1)
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 //	//	printf("the call func:%s\r\n", __FUNCTION__);
 //	unsigned char *pbuf = (unsigned char *) ipara;
 //	unsigned short len = GetParaLen(pbuf);
@@ -345,9 +381,13 @@ static RET_DEFINE ExSha256Func(unsigned char *ipara,void * pVmScriptRun) {
 
 static RET_DEFINE ExDesFunc(unsigned char *ipara,void * pVmScriptRun) {
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 3);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 3);
+    if(!GetData(ipara,retdata) ||retdata.size() != 3)
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	//	printf("the call func:%s\r\n", __FUNCTION__);
 
 //	unsigned char *pbuf = ipara;
@@ -468,9 +508,15 @@ static RET_DEFINE ExDesFunc(unsigned char *ipara,void * pVmScriptRun) {
 
 static RET_DEFINE ExVerifySignatureFunc(unsigned char *ipara,void * pVmScriptRun) {
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 3);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 3);
+    if(!GetData(ipara,retdata) ||retdata.size() != 3||
+    		retdata.at(1).get()->size() != 33||
+    		retdata.at(2).get()->size() !=32)
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	//	printf("the call func:%s\r\n", __FUNCTION__);
 //	unsigned char *pbuf = ipara;
 //	unsigned short len = GetParaLen(pbuf);
@@ -530,9 +576,13 @@ static RET_DEFINE ExSignatureFunc(unsigned char *ipara,void * pVmScriptRun) {
 
 static RET_DEFINE ExLogPrintFunc(unsigned char *ipara,void * pVmScriptRun) {
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 2);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 2);
+    if(!GetData(ipara,retdata) ||retdata.size() != 2)
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	CDataStream tep1(*retdata.at(0), SER_DISK, CLIENT_VERSION);
 	bool flag ;
 	tep1 >> flag;
@@ -546,11 +596,11 @@ static RET_DEFINE ExLogPrintFunc(unsigned char *ipara,void * pVmScriptRun) {
 	if(flag)
 	{
 		LogPrint("vm","%s\r\n", HexStr(pdata).c_str());
-		LogPrint("INFO","%s\r\n", HexStr(pdata).c_str());
+//		LogPrint("INFO","%s\r\n", HexStr(pdata).c_str());
 	}else
 	{
 		LogPrint("vm","%s\r\n",pdata.c_str());
-		LogPrint("INFO","%s\r\n",pdata.c_str());
+//		LogPrint("INFO","%s\r\n",pdata.c_str());
 	}
 
 
@@ -565,12 +615,16 @@ static RET_DEFINE ExLogPrintFunc(unsigned char *ipara,void * pVmScriptRun) {
 static RET_DEFINE ExGetTxContractsFunc(unsigned char * ipara,void * pVmScriptRun) {
 
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 1);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 1);
+    if(!GetData(ipara,retdata) ||retdata.size() != 1 || retdata.at(0).get()->size() != 32)
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	uint256 hash1(*retdata.at(0));
 	//cout<<"ExGetTxContractsFunc1:"<<hash1.GetHex()<<endl;
-	LogPrint("vm","ExGetTxContractsFunc1:%s",hash1.GetHex().c_str());
+//	LogPrint("vm","ExGetTxContractsFunc1:%s\n",hash1.GetHex().c_str());
 
 
 	std::shared_ptr<CBaseTransaction> pBaseTx;
@@ -586,9 +640,13 @@ static RET_DEFINE ExGetTxContractsFunc(unsigned char * ipara,void * pVmScriptRun
 }
 static RET_DEFINE ExGetTxAccountsFunc(unsigned char * ipara, void * pVmScriptRun) {
 	vector<std::shared_ptr<vector<unsigned char> > > retdata;
-	GetData(ipara, retdata);
-	assert(retdata.size() == 1);
-
+//	GetData(ipara, retdata);
+//	assert(retdata.size() == 1);
+    if(!GetData(ipara,retdata) ||retdata.size() != 1|| retdata.at(0).get()->size() != 32)
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	CDataStream tep1(*retdata.at(0), SER_DISK, CLIENT_VERSION);
 	uint256 hash1(0);
 	tep1 >>hash1;
@@ -617,11 +675,15 @@ static RET_DEFINE ExGetTxAccountsFunc(unsigned char * ipara, void * pVmScriptRun
 static RET_DEFINE ExGetAccountPublickeyFunc(unsigned char * ipara,void * pVmScriptRun) {
 	CVmScriptRun *pVmScript = (CVmScriptRun *)pVmScriptRun;
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 1);
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 1);
+    if(!GetData(ipara,retdata) ||retdata.size() != 1|| retdata.at(0).get()->size() != 6)
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
     bool flag = true;
 
-	string strParam((*retdata[0]).begin(), (*retdata[0]).end());
 	CAccount aAccount;
 	CRegID regid(*retdata.at(0));
 	CUserID userid(regid);
@@ -642,11 +704,14 @@ static RET_DEFINE ExGetAccountPublickeyFunc(unsigned char * ipara,void * pVmScri
 static RET_DEFINE ExQueryAccountBalanceFunc(unsigned char * ipara,void * pVmScriptRun) {
 	CVmScriptRun *pVmScript = (CVmScriptRun *)pVmScriptRun;
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 1);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 1);
+    if(!GetData(ipara,retdata) ||retdata.size() != 1|| retdata.at(0).get()->size() != 6)
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	bool flag = true;
-	string strParam((*retdata[0]).begin(), (*retdata[0]).end());
 	CAccount aAccount;
 	CRegID regid(*retdata.at(0));
 	CUserID userid(regid);
@@ -664,12 +729,16 @@ static RET_DEFINE ExQueryAccountBalanceFunc(unsigned char * ipara,void * pVmScri
 }
 static RET_DEFINE ExGetTxConFirmHeightFunc(unsigned char * ipara,void * pVmScriptRun) {
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 1);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 1);
+    if(!GetData(ipara,retdata) ||retdata.size() != 1|| retdata.at(0).get()->size() != 32)
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	uint256 hash1(*retdata.at(0));
 	//cout<<"ExGetTxContractsFunc1:"<<hash1.GetHex()<<endl;
-	LogPrint("vm","ExGetTxContractsFunc1:%s",hash1.GetHex().c_str());
+//	LogPrint("vm","ExGetTxContractsFunc1:%s",hash1.GetHex().c_str());
 
 
 	std::shared_ptr<CBaseTransaction> pBaseTx;
@@ -701,9 +770,13 @@ static RET_DEFINE ExGetTipHeightFunc(unsigned char * ipara,void * pVmScriptRun) 
 }
 static RET_DEFINE ExGetBlockHashFunc(unsigned char * ipara,void * pVmScriptRun) {
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 1);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 1);
+    if(!GetData(ipara,retdata) ||retdata.size() != 1)
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	int height = 0;
 	memcpy(&height, &retdata.at(0).get()->at(0), sizeof(int));
 	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
@@ -749,9 +822,13 @@ static vector<unsigned char> AddChar(vector<unsigned char>&param)
 static RET_DEFINE ExWriteDataDBFunc(unsigned char * ipara,void * pVmScript) {
 	CVmScriptRun *pVmScriptRun = (CVmScriptRun *)pVmScript;
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 3);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 3);
+    if(!GetData(ipara,retdata) ||retdata.size() != 3)
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	int height = 0;
 	memcpy(&height,&retdata.at(2).get()->at(0),4);
 
@@ -762,13 +839,12 @@ static RET_DEFINE ExWriteDataDBFunc(unsigned char * ipara,void * pVmScript) {
 //	vector<unsigned char> key =AddChar(*retdata.at(0));
 //	int size = key.size();
 	CScriptDBOperLog operlog;
-	if(!scriptDB->SetScriptData(scriptid,*retdata.at(0),*retdata.at(1),height,operlog))
-	{
+	if (!scriptDB->SetScriptData(scriptid, *retdata.at(0), *retdata.at(1), height, operlog)) {
 		flag = false;
+	} else {
+		shared_ptr<vector<CScriptDBOperLog> > m_dblog = pVmScriptRun->GetDbLog();
+		(*m_dblog.get()).push_back(operlog);
 	}
-
-	shared_ptr<vector<CScriptDBOperLog> > m_dblog = pVmScriptRun->GetDbLog();
-	(*m_dblog.get()).push_back(operlog);
 	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
     CDataStream tep(SER_DISK, CLIENT_VERSION);
     tep << flag;
@@ -779,21 +855,25 @@ static RET_DEFINE ExWriteDataDBFunc(unsigned char * ipara,void * pVmScript) {
 static RET_DEFINE ExDeleteDataDBFunc(unsigned char * ipara,void * pVmScript) {
 	CVmScriptRun *pVmScriptRun = (CVmScriptRun *)pVmScript;
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 1);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 1);
+    if(!GetData(ipara,retdata) ||retdata.size() != 1)
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	CRegID scriptid = pVmScriptRun->GetScriptRegID();
 
 	bool flag = true;
 	CScriptDBViewCache* scriptDB = pVmScriptRun->GetScriptDB();
 
 	CScriptDBOperLog operlog;
-	if(!scriptDB->EraseScriptData(scriptid,*retdata.at(0),operlog))
-	{
+	if (!scriptDB->EraseScriptData(scriptid, *retdata.at(0), operlog)) {
 		flag = false;
+	} else {
+		shared_ptr<vector<CScriptDBOperLog> > m_dblog = pVmScriptRun->GetDbLog();
+		m_dblog.get()->push_back(operlog);
 	}
-	shared_ptr<vector<CScriptDBOperLog> > m_dblog = pVmScriptRun->GetDbLog();
-	m_dblog.get()->push_back(operlog);
 	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
     CDataStream tep(SER_DISK, CLIENT_VERSION);
     tep << flag;
@@ -805,9 +885,13 @@ static RET_DEFINE ExDeleteDataDBFunc(unsigned char * ipara,void * pVmScript) {
 static RET_DEFINE ExReadDataValueDBFunc(unsigned char * ipara,void * pVmScript) {
 	CVmScriptRun *pVmScriptRun = (CVmScriptRun *)pVmScript;
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 1);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 1);
+    if(!GetData(ipara,retdata) ||retdata.size() != 1)
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	CRegID scriptid = pVmScriptRun->GetScriptRegID();
 
 	vector_unsigned_char vValue;
@@ -817,11 +901,15 @@ static RET_DEFINE ExReadDataValueDBFunc(unsigned char * ipara,void * pVmScript) 
 
 	//vector<unsigned char> key =AddChar(*retdata.at(0));
 //	LogPrint("INFO", "script run read data:%s\n", HexStr(*retdata.at(0)));
-	if(!scriptDB->GetScriptData(scriptid,*retdata.at(0),vValue,nHeight))
+	CScriptDBOperLog operLog;
+	if(!scriptDB->GetScriptData(pVmScriptRun->GetComfirHeight(),scriptid, *retdata.at(0), vValue, nHeight, operLog))
 	{
+		if(!operLog.vKey.empty()) {
+			shared_ptr<vector<CScriptDBOperLog> > m_dblog = pVmScriptRun->GetDbLog();
+			m_dblog.get()->push_back(operLog);
+		}
 		flag = false;
 	}
-
 
 	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
     (*tem.get()).push_back(vValue);
@@ -831,9 +919,13 @@ static RET_DEFINE ExReadDataValueDBFunc(unsigned char * ipara,void * pVmScript) 
 static RET_DEFINE ExModifyDataDBFunc(unsigned char * ipara,void * pVmScript) {
 	CVmScriptRun *pVmScriptRun = (CVmScriptRun *)pVmScript;
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 3);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 3);
+    if(!GetData(ipara,retdata) ||retdata.size() != 3)
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	int height = 0;
 	memcpy(&height,&retdata.at(2).get()->at(0),4);
 
@@ -845,15 +937,19 @@ static RET_DEFINE ExModifyDataDBFunc(unsigned char * ipara,void * pVmScript) {
 	//vector<unsigned char> key =AddChar(*retdata.at(0));
 	vector_unsigned_char vTemp;
 	int nHeight;
-	if(scriptDB->GetScriptData(scriptid, *retdata.at(0), vTemp, nHeight)) {
+	if(scriptDB->GetScriptData(pVmScriptRun->GetComfirHeight(),scriptid, *retdata.at(0), vTemp, nHeight, operlog)) {
 		if(scriptDB->SetScriptData(scriptid,*retdata.at(0),*retdata.at(1).get(),height,operlog))
 		{
 			shared_ptr<vector<CScriptDBOperLog> > m_dblog = pVmScriptRun->GetDbLog();
 			m_dblog.get()->push_back(operlog);
 			flag = true;
 		}
+	}else {
+		if(!operlog.vKey.empty()) {
+			shared_ptr<vector<CScriptDBOperLog> > m_dblog = pVmScriptRun->GetDbLog();
+			m_dblog.get()->push_back(operlog);
+		}
 	}
-
 	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
     CDataStream tep(SER_DISK, CLIENT_VERSION);
     tep << flag;
@@ -883,9 +979,13 @@ static RET_DEFINE ExGetDBSizeFunc(unsigned char * ipara,void * pVmScript) {
 static RET_DEFINE ExGetDBValueFunc(unsigned char * ipara,void * pVmScript) {
 	CVmScriptRun *pVmScriptRun = (CVmScriptRun *)pVmScript;
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 2 || retdata.size() == 1);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 2 || retdata.size() == 1);
+    if(!GetData(ipara,retdata) ||retdata.size() != 2 && retdata.size() != 1)
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	int index = 0;
 	bool flag = true;
 	memcpy(&index,&retdata.at(0).get()->at(0),sizeof(int));
@@ -904,7 +1004,14 @@ static RET_DEFINE ExGetDBValueFunc(unsigned char * ipara,void * pVmScript) {
 	}
 
 	CScriptDBViewCache* scriptDB = pVmScriptRun->GetScriptDB();
-	flag = scriptDB->GetScriptData(scriptid,index,vScriptKey,vValue,nHeight);
+	set<CScriptDBOperLog> setOperLog;
+	flag = scriptDB->GetScriptData(pVmScriptRun->GetComfirHeight(),scriptid,index,vScriptKey,vValue,nHeight,setOperLog);
+
+	if (!setOperLog.empty()) {
+		shared_ptr<vector<CScriptDBOperLog> > m_dblog = pVmScriptRun->GetDbLog();
+		for(auto &item : setOperLog)
+			m_dblog.get()->push_back(item);
+	}
 
 	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
     (*tem.get()).push_back(vScriptKey);
@@ -930,9 +1037,15 @@ static RET_DEFINE ExGetCurTxHash(unsigned char * ipara,void * pVmScript) {
 static RET_DEFINE ExIsAuthoritFunc(unsigned char * ipara,void * pVmScript) {
 	CVmScriptRun *pVmScriptRun = (CVmScriptRun *)pVmScript;
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 2);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 2);
+    if(!GetData(ipara,retdata) ||retdata.size() != 2
+    		|| retdata.at(0).get()->size() != 6
+    		|| retdata.at(1).get()->size() != sizeof(uint64_t))
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	uint64_t money;
 	memcpy(&money,&retdata.at(1).get()->at(0),sizeof(money));
 
@@ -961,9 +1074,13 @@ static RET_DEFINE ExReadDataDBTimeFunc(unsigned char * ipara,void * pVmScript)
 {
 	CVmScriptRun *pVmScriptRun = (CVmScriptRun *)pVmScript;
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 1);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 1);
+    if(!GetData(ipara,retdata) ||retdata.size() != 1 )
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	CRegID scriptid = pVmScriptRun->GetScriptRegID();
 	vector_unsigned_char vValue;
 	int nHeight;
@@ -971,8 +1088,13 @@ static RET_DEFINE ExReadDataDBTimeFunc(unsigned char * ipara,void * pVmScript)
 	CScriptDBViewCache *scriptDB = pVmScriptRun->GetScriptDB();
 
 	//vector<unsigned char> key =AddChar(*retdata.at(0));
-	if(!scriptDB->GetScriptData(scriptid,*retdata.at(0),vValue,nHeight))
+	CScriptDBOperLog operLog;
+	if(!scriptDB->GetScriptData(pVmScriptRun->GetComfirHeight(),scriptid,*retdata.at(0),vValue,nHeight, operLog))
 	{
+		if(!operLog.vKey.empty()) {
+			shared_ptr<vector<CScriptDBOperLog> > m_dblog = pVmScriptRun->GetDbLog();
+			m_dblog.get()->push_back(operLog);
+		}
 		flag =  false;
 	}
 
@@ -988,9 +1110,13 @@ static RET_DEFINE ExModifyDataDBTimeFunc(unsigned char * ipara,void * pVmScript)
 {
 	CVmScriptRun *pVmScriptRun = (CVmScriptRun *)pVmScript;
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 2);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 2);
+    if(!GetData(ipara,retdata) ||retdata.size() != 2 )
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	int height = 0;
 	memcpy(&height,&retdata.at(1).get()->at(0),4);
 
@@ -1003,13 +1129,18 @@ static RET_DEFINE ExModifyDataDBTimeFunc(unsigned char * ipara,void * pVmScript)
 
 	CScriptDBOperLog operlog;
 	//vector<unsigned char> key =AddChar(*retdata.at(0));
-	if(scriptDB->GetScriptData(scriptid,*retdata.at(0),vValue,temp))
+	if(scriptDB->GetScriptData(pVmScriptRun->GetComfirHeight(),scriptid,*retdata.at(0),vValue,temp,operlog))
 	{
 		if(scriptDB->SetScriptData(scriptid,*retdata.at(0),vValue,height,operlog))
 		{
 			shared_ptr<vector<CScriptDBOperLog> > m_dblog = pVmScriptRun->GetDbLog();
 			m_dblog.get()->push_back(operlog);
 			flag = true;
+		}
+	}else {
+		if (!operlog.vKey.empty()) {
+			shared_ptr<vector<CScriptDBOperLog> > m_dblog = pVmScriptRun->GetDbLog();
+			m_dblog.get()->push_back(operlog);
 		}
 	}
 
@@ -1027,9 +1158,13 @@ static RET_DEFINE ExModifyDataDBVavleFunc(unsigned char * ipara,void * pVmScript
 	CVmScriptRun *pVmScriptRun = (CVmScriptRun *)pVmScript;
 
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 2);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 2);
+    if(!GetData(ipara,retdata) ||retdata.size() != 2 )
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	CRegID scriptid = pVmScriptRun->GetScriptRegID();
 	vector_unsigned_char vValue;
 	bool flag = false;
@@ -1039,13 +1174,18 @@ static RET_DEFINE ExModifyDataDBVavleFunc(unsigned char * ipara,void * pVmScript
 
 	CScriptDBOperLog operlog;
 //	vector<unsigned char> key =AddChar(*retdata.at(0));
-	if(scriptDB->GetScriptData(scriptid,*retdata.at(0),vValue,temp))
+	if(scriptDB->GetScriptData(pVmScriptRun->GetComfirHeight(),scriptid,*retdata.at(0),vValue,temp,operlog))
 	{
 		if(scriptDB->SetScriptData(scriptid,*retdata.at(0),*retdata.at(1),temp,operlog))
 		{
 			shared_ptr<vector<CScriptDBOperLog> > m_dblog = pVmScriptRun->GetDbLog();
 			m_dblog.get()->push_back(operlog);
 			flag = true;
+		}
+	}else {
+		if (!operlog.vKey.empty()) {
+			shared_ptr<vector<CScriptDBOperLog> > m_dblog = pVmScriptRun->GetDbLog();
+			m_dblog.get()->push_back(operlog);
 		}
 	}
 
@@ -1063,9 +1203,13 @@ static RET_DEFINE ExWriteOutputFunc(unsigned char * ipara,void * pVmScript)
 	unsigned char * pbuffer = ipara;
 	CVmScriptRun *pVmScriptRun = (CVmScriptRun *)pVmScript;
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 1);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 1);
+    if(!GetData(ipara,retdata) ||retdata.size() != 1 )
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	vector<CVmOperate> source;
 	CVmOperate temp;
 	int Size = ::GetSerializeSize(temp, SER_NETWORK, PROTOCOL_VERSION);
@@ -1084,9 +1228,13 @@ static RET_DEFINE ExWriteOutputFunc(unsigned char * ipara,void * pVmScript)
 static RET_DEFINE ExGetAuthoritedDefineFunc(unsigned char * ipara,void * pVmScript){
 	CVmScriptRun *pVmScriptRun = (CVmScriptRun *)pVmScript;
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 1);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 1);
+    if(!GetData(ipara,retdata) ||retdata.size() != 1 || retdata.at(0).get()->size() != 6)
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	bool flag = true;
 	CAccount aAccount;
 	CRegID regid(*retdata.at(0));
@@ -1113,18 +1261,26 @@ static RET_DEFINE ExGetAuthoritedDefineFunc(unsigned char * ipara,void * pVmScri
 static RET_DEFINE ExGetScriptDataFunc(unsigned char * ipara,void * pVmScript)
 {
 	vector<std::shared_ptr < vector<unsigned char> > > retdata;
-	GetData(ipara,retdata);
-	assert(retdata.size() == 2);
-
+//	GetData(ipara,retdata);
+//	assert(retdata.size() == 2);
+    if(!GetData(ipara,retdata) ||retdata.size() != 2 || retdata.at(0).get()->size() != 6)
+    {
+    	auto tem =  make_shared<std::vector< vector<unsigned char> > >();
+    	return std::make_tuple (false, tem);
+    }
 	vector_unsigned_char vValue;
 	int nHeight;
 	bool flag =true;
 	CVmScriptRun *pVmScriptRun = (CVmScriptRun *)pVmScript;
 	CScriptDBViewCache* scriptDB = pVmScriptRun->GetScriptDB();
 	CRegID scriptid(*retdata.at(0));
-
-	if(!scriptDB->GetScriptData(scriptid,*retdata.at(1),vValue,nHeight))
+	CScriptDBOperLog operLog;
+	if(!scriptDB->GetScriptData(pVmScriptRun->GetComfirHeight(),scriptid, *retdata.at(1), vValue, nHeight, operLog))
 	{
+		if (!operLog.vKey.empty()) {
+			shared_ptr<vector<CScriptDBOperLog> > m_dblog = pVmScriptRun->GetDbLog();
+			m_dblog.get()->push_back(operLog);
+		}
 		flag = false;
 	}
 
