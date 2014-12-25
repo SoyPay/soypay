@@ -51,6 +51,7 @@ Value getnewaddress(const Array& params, bool fHelp)
         	"1. \"IsMiner\"  (bool)  private key Is used for miner if true will create tow key ,another for miner.\n"
            "\nExamples:\n"
             + HelpExampleCli("getnewaddress", "")
+            + HelpExampleCli("getnewaddress", "true")
         );
 
     // Parse the account first so we don't generate a key if there's an error
@@ -134,6 +135,104 @@ Value signmessage(const Array& params, bool fHelp)
     return EncodeBase64(&vchSig[0], vchSig.size());
 }
 
+Value sendtoaddresswithfee(const Array& params, bool fHelp)
+ {
+	int size = params.size();
+	if (fHelp || (!(size == 3 || size == 4)))
+		throw runtime_error(
+				"sendtoaddress \"bitcoinaddress\" amount "
+						"\nSent an amount to a given address. The amount is a real and is rounded to the nearest 0.00000001\n"
+						+ HelpRequiringPassphrase() + "\nArguments:\n"
+								"1. \"bitcoinaddress\"  (string, required) The bitcoin address to send to.\n"
+
+								"\nResult:\n"
+								"\"transactionid\"  (string) The transaction id.\n"
+								"\nExamples:\n"
+						+ HelpExampleCli("sendtoaddressfee", "\"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\" 10000000 1000")
+						+ HelpExampleCli("sendtoaddressfee",
+								"\"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\" 0.1 \"donation\" \"seans outpost\"")
+						+ HelpExampleRpc("sendtoaddress",
+								"\"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\", 0.1, \"donation\", \"seans outpost\""
+										+ HelpExampleCli("sendtoaddress", "\"0-6\" 10 ")
+										+ HelpExampleCli("sendtoaddress", "\"00000000000000000005\" 10 ")
+										+ HelpExampleCli("sendtoaddress", "\"0-6\" \"0-5\" 10 ")
+										+ HelpExampleCli("sendtoaddress", "\"00000000000000000005\" \"0-6\"10 ")));
+
+	EnsureWalletIsUnlocked();
+	CKeyID sendKeyId;
+	CKeyID RevKeyId;
+
+	auto GetKeyId = [](string const &addr,CKeyID &KeyId) {
+		if (!CRegID::GetKeyID(addr, KeyId)) {
+			KeyId=CKeyID(addr);
+			if (KeyId.IsEmpty())
+			return false;
+		}
+		return true;
+	};
+
+	// Amount
+	int64_t nAmount = 0;
+	int64_t nFee = 0;
+	//// from address to addreww
+	if (size == 4) {
+
+		if (!GetKeyId(params[0].get_str(), sendKeyId)) {
+			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "FROM Invalid  address");
+		}
+		if (!GetKeyId(params[1].get_str(), RevKeyId)) {
+			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "to Invalid  address");
+		}
+
+		nAmount = AmountToRawValue(params[2]);
+		if (pAccountViewTip->GetRawBalance(sendKeyId, chainActive.Tip()->nHeight) <= nAmount + SysCfg().GetTxFee()) {
+			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "FROM address not enough coins");
+		}
+		nFee = AmountToRawValue(params[3]);
+	} else {
+		if (!GetKeyId(params[0].get_str(), RevKeyId)) {
+			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "to address Invalid  ");
+		}
+
+		nAmount = AmountToRawValue(params[1]);
+		set<CKeyID> sKeyid;
+		if (!pwalletMain->GetKeyIds(sKeyid)) //get addrs
+				{
+			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No Key In wallet \n");
+		}
+		nFee = AmountToRawValue(params[2]);
+		for (auto &te : sKeyid) {
+			if (pAccountViewTip->GetRawBalance(te, chainActive.Tip()->nHeight) >= nAmount + SysCfg().GetTxFee()) {
+				sendKeyId = te;
+				break;
+			}
+		}
+
+		if (sendKeyId == uint160(0)) {
+			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "not find enough moeny account ");
+		}
+	}
+
+	CRegID sendreg;
+	CRegID revreg;
+
+
+	if (!pwalletMain->GetRegId(sendKeyId, sendreg)) {
+		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid  address");
+	}
+
+	std::tuple<bool,string> ret;
+	if (pAccountViewTip->GetRegId(CUserID(RevKeyId), revreg)) {
+		ret = pwalletMain->SendMoney(sendreg, revreg, nAmount, nFee);
+
+	} else {
+		ret = pwalletMain->SendMoney(sendreg, CUserID(RevKeyId), nAmount, nFee);
+	}
+
+	Object obj;
+	obj.push_back(Pair(std::get<0>(ret) ? "hash" : "error code", std::get<1>(ret)));
+	return obj;
+}
 
 Value sendtoaddress(const Array& params, bool fHelp)
  {
@@ -184,7 +283,7 @@ Value sendtoaddress(const Array& params, bool fHelp)
 		}
 
 		nAmount = AmountToRawValue(params[2]);
-		if (pAccountViewTip->GetRawBalance(sendKeyId, chainActive.Tip()->nHeight) <= nAmount + nTransactionFee) {
+		if (pAccountViewTip->GetRawBalance(sendKeyId, chainActive.Tip()->nHeight) <= nAmount + SysCfg().GetTxFee()) {
 			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "FROM address not enough coins");
 		}
 	} else {
@@ -199,7 +298,7 @@ Value sendtoaddress(const Array& params, bool fHelp)
 			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No Key In wallet \n");
 		}
 		for (auto &te : sKeyid) {
-			if (pAccountViewTip->GetRawBalance(te, chainActive.Tip()->nHeight) >= nAmount + nTransactionFee) {
+			if (pAccountViewTip->GetRawBalance(te, chainActive.Tip()->nHeight) >= nAmount + SysCfg().GetTxFee()) {
 				sendKeyId = te;
 				break;
 			}
@@ -479,9 +578,11 @@ Value settxfee(const Array& params, bool fHelp)
     // Amount
     int64_t nAmount = 0;
     if (params[0].get_real() != 0.0)
-        nAmount = AmountToRawValue(params[0]);        // rejects 0.0 amounts
+    {
+       nAmount = AmountToRawValue(params[0]);        // rejects 0.0 amounts
+       SysCfg().SetDeflautTxFee(nAmount);
+    }
 
-    nTransactionFee = nAmount;
     return true;
 }
 

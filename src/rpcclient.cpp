@@ -131,6 +131,14 @@ Array RPCConvertValues(const string &strMethod, const vector<string> &strParams)
     if (strMethod == "getnetworkhashps"       && n > 1) ConvertTo<int64_t>(params[1]);
     if (strMethod == "sendtoaddress"          && n == 2) ConvertTo<double>(params[1]);
     if (strMethod == "sendtoaddress"          && n == 3) ConvertTo<double>(params[2]);
+	if (strMethod == "sendtoaddresswithfee" && n == 3) {
+		ConvertTo<double>(params[1]);
+		ConvertTo<double>(params[2]);
+	}
+	if (strMethod == "sendtoaddresswithfee" && n == 4) {
+		ConvertTo<double>(params[2]);
+		ConvertTo<double>(params[3]);
+	}
     if (strMethod == "settxfee"               && n > 0) ConvertTo<double>(params[0]);
     if (strMethod == "getreceivedbyaddress"   && n > 1) ConvertTo<int64_t>(params[1]);
     if (strMethod == "getreceivedbyaccount"   && n > 1) ConvertTo<int64_t>(params[1]);
@@ -224,6 +232,8 @@ Array RPCConvertValues(const string &strMethod, const vector<string> &strParams)
     if (strMethod == "getscriptdata"          && n ==3) ConvertTo<int>(params[1]);
     if (strMethod == "getscriptdata"          && n == 3) ConvertTo<int>(params[2]);
     if (strMethod == "listregscript"          && n > 0) ConvertTo<bool>(params[0]);
+    if (strMethod == "getblock"          && n > 0){ if(params[0].get_str().size()<32) ConvertTo<int>(params[0]);}
+
 
     return params;
 }

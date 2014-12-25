@@ -160,7 +160,7 @@ Value SysTestBase::CreateRegScriptTx(const string& strAddress, const string& str
 		szType[0] = '0';
 		strScriptData = SysCfg().GetDefaultTestDataPath() + strScript;
 		if (!boost::filesystem::exists(strScriptData)) {
-			BOOST_CHECK_MESSAGE(0, strScript + "not exist");
+			BOOST_CHECK_MESSAGE(0, strScriptData + " not exist");
 			return false;
 		}
 	} else {
@@ -265,7 +265,7 @@ bool SysTestBase::CommandLineRPC_GetValue(int argc, char *argv[], Value &value) 
 		if (false == nRes) {
 //			cout<<strPrint<<endl;
 		}
-		// fprintf((nRet == 0 ? stdout : stderr), "%s\n", strPrint.c_str());
+//	    fprintf((nRes == 0 ? stdout : stderr), "%s\n", strPrint.c_str());
 	}
 
 	return nRes;
@@ -338,17 +338,21 @@ bool SysTestBase::GetOneScriptId(std::string &regscriptid) {
 	return false;
 }
 
-bool SysTestBase::GetNewAddr(std::string &addr) {
+bool SysTestBase::GetNewAddr(std::string &addr,bool flag) {
 	//CommanRpc
-	char *argv[] = { "rpctest", "getnewaddress" };
+	string param = "false";
+	if(flag)
+	{
+		param = "true";
+	}
+	char *argv[] = { "rpctest", "getnewaddress",(char*)param.c_str() };
 	int argc = sizeof(argv) / sizeof(char*);
 
 	Value value;
 
 	if (CommandLineRPC_GetValue(argc, argv, value)) {
-		addr = value.get_str();
-		LogPrint("test_miners", "GetNewAddr:%s\r\n", addr.c_str());
-		return true;
+		addr = "addr";
+		return GetStrFromObj(value,addr);
 	}
 	return false;
 }
@@ -696,8 +700,8 @@ bool SysTestBase::GenerateOneBlock() {
 }
 
 bool SysTestBase::DisConnectBlock(int nNum) {
-	int nCurHeight = static_cast<int>(chainActive.Height() );
-	BOOST_CHECK(nNum>0 && nNum<=nCurHeight);
+	int nFirstHeight = static_cast<int>(chainActive.Height() );
+	BOOST_CHECK(nNum>0 && nNum<=nFirstHeight);
 
 	string strNum = strprintf("%d",nNum);
 	char *argv[3] = { "rpctest", "disconnectblock", (char*)strNum.c_str() };
@@ -706,7 +710,7 @@ bool SysTestBase::DisConnectBlock(int nNum) {
 	Value value;
 	if (CommandLineRPC_GetValue(argc, argv, value)) {
 		int nHeightAfterDis = static_cast<int>(chainActive.Height() );
-		BOOST_CHECK(nHeightAfterDis+1 == nCurHeight);
+		BOOST_CHECK(nHeightAfterDis == nFirstHeight-nNum);
 		return true;
 	}
 	return false;
@@ -744,4 +748,19 @@ void SysTestBase::StopServer() {
 		pThreadShutdown = NULL;
 	}
 	Shutdown();
+}
+bool SysTestBase::GetStrFromObj(const Value& valueRes,string& str)
+{
+	if (valueRes.type() == null_type) {
+				return false;
+			}
+
+			const Value& result = find_value(valueRes.get_obj(), str);
+			if (result.type() == null_type){
+				return false;
+			}
+			if (result.type() != null_type){
+				str = result.get_str();
+				}
+			return true;
 }

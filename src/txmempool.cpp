@@ -49,8 +49,13 @@ void CTxMemPool::SetAccountViewDB(CAccountViewCache *pAccountViewCacheIn) {
 	pAccountViewCache = make_shared<CAccountViewCache>(*pAccountViewCacheIn, false);
 }
 
-void CTxMemPool::ReScanMemPoolTx(const CBlock &block, CAccountViewCache *pAccountViewCacheIn) {
+void CTxMemPool::SetScriptDBViewDB(CScriptDBViewCache *pScriptDBViewCacheIn) {
+	pScriptDBViewCache = make_shared<CScriptDBViewCache>(*pScriptDBViewCacheIn, false);
+}
+
+void CTxMemPool::ReScanMemPoolTx(const CBlock &block, CAccountViewCache *pAccountViewCacheIn, CScriptDBViewCache *pScriptDBViewCacheIn) {
 	pAccountViewCache.reset(new CAccountViewCache(*pAccountViewCacheIn, false));
+	pScriptDBViewCache.reset(new CScriptDBViewCache(*pScriptDBViewCacheIn, false));
 	{
 		LOCK(cs);
 		for(auto &pTxItem : block.vptx){
@@ -83,7 +88,7 @@ void CTxMemPool::remove(CBaseTransaction *pBaseTx, list<std::shared_ptr<CBaseTra
 	{
 		LOCK(cs);
 		uint256 hash = pBaseTx->GetHash();
-//        if(NORMAL_TX == pTx->nTxType ){
+//        if(COMMON_TX == pTx->nTxType ){
 //        	CTransaction *pNormalTx = (CTransaction *)pTx;//dynamic_pointer_cast<CTransaction>(pTx);
 //			}
 //        }
@@ -99,9 +104,8 @@ bool CTxMemPool::CheckTxInMemPool(const uint256& hash, const CTxMemPoolEntry &en
 	CValidationState state;
 	CTxUndo txundo;
 	CTransactionDBCache txCacheTemp(*pTxCacheTip, true);
-	CScriptDBViewCache contractScriptTemp(*pScriptDBTip, true);
 	if (!entry.GetTx()->UpdateAccount(0, *pAccountViewCache, state, txundo, chainActive.Tip()->nHeight + 1,
-			txCacheTemp, contractScriptTemp)) {
+			txCacheTemp, *pScriptDBViewCache)) {
 		return false;
 	}
 	return true;

@@ -65,7 +65,7 @@ Object TxToJSON(CBaseTransaction *pTx) {
 		result.push_back(Pair("height", prtx->nValidHeight));
 		break;
 	}
-	case NORMAL_TX: {
+	case COMMON_TX: {
 		CTransaction *prtx = (CTransaction *) pTx;
 		result.push_back(Pair("txtype", "NormalTx"));
 		result.push_back(Pair("ver", prtx->nVersion));
@@ -219,9 +219,9 @@ Value registeraccounttx(const Array& params, bool fHelp) {
 		if (account.IsRegister()) {
 			throw JSONRPCError(RPC_WALLET_ERROR, "in registeraccounttx Error: Account is already registered");
 		}
-		if (balance < fee) {
-			throw JSONRPCError(RPC_WALLET_ERROR, "in registeraccounttx Error: Account balance is insufficient.");
-		}
+//		if (balance < fee) {
+//			throw JSONRPCError(RPC_WALLET_ERROR, "in registeraccounttx Error: Account balance is insufficient.");
+//		}
 
 		//pubkey
 		CPubKey pubkey;
@@ -571,9 +571,9 @@ Value createfreezetx(const Array& params, bool fHelp) {
 	//	LOCK2(cs_main, pwalletMain->cs_wallet);
 		EnsureWalletIsUnlocked();
 
-		if (freeheight < chainActive.Tip()->nHeight + 2) {
-			throw JSONRPCError(RPC_WALLET_ERROR, "in createfreezetx Error: freeheight is invalid.");
-		}
+//		if (freeheight < chainActive.Tip()->nHeight + 2) {
+//			throw JSONRPCError(RPC_WALLET_ERROR, "in createfreezetx Error: freeheight is invalid.");
+//		}
 		//balance
 		CAccountViewCache view(*pAccountViewTip, true);
 		CAccount account;
@@ -599,7 +599,16 @@ Value createfreezetx(const Array& params, bool fHelp) {
 		tx.regAccountId = account.regID;// pwalletMain->mapKeyRegID[keyid];
 		tx.llFreezeFunds = frozenmoney;
 		tx.llFees = fee;
+		if (0 == height) {
+			height = chainActive.Tip()->nHeight;
+		}
 		tx.nValidHeight = height;
+		if(0 == freeheight) {
+			freeheight = chainActive.Tip()->nHeight + 100;
+		}else
+		{
+			freeheight += chainActive.Tip()->nHeight;
+		}
 		tx.nUnfreezeHeight = freeheight;
 
 
@@ -794,6 +803,9 @@ Value registerscripttx(const Array& params, bool fHelp) {
 		tx.regAccountId = GetUserId(keyid);
 		tx.script = vscript;
 		tx.llFees = fee;
+		if (0 == height) {
+			height = chainActive.Tip()->nHeight;
+		}
 		tx.nValidHeight = height;
 //		tx.aAuthorizate(nAuthorizeTime, nUserDefine, nMaxMoneyPerTime, nMaxMoneyTotal,
 //				nMaxMoneyPerDay);
@@ -876,6 +888,7 @@ Value listaddr(const Array& params, bool fHelp) {
 			obj.push_back(Pair("addr",       tem.first.ToAddress()));
 			obj.push_back(Pair("balance",    GetDetailInfo(curheight)));
 			obj.push_back(Pair("RegID",      tem.second.GetRegID().ToString()));
+			if(!tem.second.GetRegID().IsEmpty())
 			obj.push_back(Pair("RegID2",     HexStr(tem.second.GetRegID().GetVec6())));
 			retArry.push_back(obj);
 		}
@@ -1260,6 +1273,10 @@ Value resetclient(const Array& params, bool fHelp) {
 		pwalletMain->CleanAll();
 		CBlockIndex* te=chainActive.Tip();
 		uint256 hash= te->GetBlockHash();
+//		auto ret = remove_if( mapBlockIndex.begin(), mapBlockIndex.end(),[&](std::map<uint256, CBlockIndex*>::reference a) {
+//			return (a.first == hash);
+//		});
+//		mapBlockIndex.erase(ret,mapBlockIndex.end());
 		for(auto it = mapBlockIndex.begin(), ite = mapBlockIndex.end(); it != ite;)
 		{
 		  if(it->first != hash)

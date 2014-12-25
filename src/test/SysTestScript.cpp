@@ -238,7 +238,8 @@ public:
 		int argc = 3;
 		char *argv[3] = { "rpctest", "disconnectblock", "1" };
 	//	sprintf(argv[2], "%d", number);
-		CommandLineRPC(argc, argv);
+		Value dummy;
+		CommandLineRPC_GetValue(argc, argv,dummy);
 	}
 
 	void CheckRollBack()
@@ -464,7 +465,9 @@ public:
 		char *param[] = { "rpctest",
 					"getscriptdbsize",
 					"010000000100"};
-		CommandLineRPC(3, param);
+//		CommandLineRPC(3, param);
+		Value dummy;
+		CommandLineRPC_GetValue(3, param,dummy);
 	}
 
 	void ListScriptData() {
@@ -474,7 +477,10 @@ public:
 				"010000000100",
 				"100",
 				"1"};
-		CommandLineRPC(5, param);
+//		CommandLineRPC(5, param);
+		Value dummy;
+		CommandLineRPC_GetValue(5, param,dummy);
+
 	}
 	void CheckDark()
 	{
@@ -754,6 +760,47 @@ public:
 				break;
 		}
 	}
+	void TestMinner()
+	{
+		for(int i=0;i < 100;i++)
+		{
+			string newaddr;
+			srand(time(NULL));
+			int r = (rand() % 2);
+			string strflag = "false";
+			if(r == 1)
+			{
+				strflag ="true";
+			}
+			BOOST_CHECK(GetNewAddr(newaddr,r));
+
+			char fee[64] = { 0 };
+			int nfee = GetRandomFee();
+			sprintf(fee, "%d", nfee);
+
+			char *argv[] = { "rpctest", "sendtoaddress", (char*)newaddr.c_str(),fee};
+			int argc = sizeof(argv) / sizeof(char*);
+
+			Value value;
+			BOOST_CHECK(CommandLineRPC_GetValue(argc, argv, value));
+			string hash = "";
+			BOOST_CHECK(GetHashFromCreatedTx(value,hash));
+			BOOST_CHECK(GenerateOneBlock());
+			char *argv1[] = { "rpctest", "registeraccounttx", (char*)newaddr.c_str(),fee,(char*)strflag.c_str()};
+			int argc1 = sizeof(argv1) / sizeof(char*);
+			Value value1;
+			BOOST_CHECK(CommandLineRPC_GetValue(argc1, argv1, value1));
+			BOOST_CHECK(GetHashFromCreatedTx(value1,hash));
+			BOOST_CHECK(GenerateOneBlock());
+			for(int j=0; j<100 ;++j)
+			cout<<'\b';
+			cout << "TestMinner progress: "<<  (int)(((i+1)/(float)100) * 100) << "%";
+		}
+
+		BOOST_CHECK(DisConnectBlock(chainActive.Height()-1));
+		BOOST_CHECK(GenerateOneBlock());
+		BOOST_CHECK(GenerateOneBlock());
+	}
 };
 
 
@@ -795,6 +842,12 @@ BOOST_FIXTURE_TEST_CASE(Anony,CSysScriptTest)
 
 	ResetEnv();
 	CheckAnony();
+}
+BOOST_FIXTURE_TEST_CASE(minier,CSysScriptTest)
+{
+
+	ResetEnv();
+	TestMinner();
 }
 BOOST_AUTO_TEST_SUITE_END()
 

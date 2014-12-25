@@ -194,7 +194,7 @@ public:
 	}
 	virtual int GetBlockMaxNonce() const
 	{
-		return 100;
+		return 1000;
 	}
 	virtual const vector<CAddress>& FixedSeeds() const {
 		return vFixedSeeds;
@@ -539,6 +539,15 @@ bool CBaseParams::IntialParams(int argc, const char* const argv[]) {
 	return true;
 }
 
+int64_t CBaseParams::GetTxFee() const{
+     return paytxfee;
+}
+int64_t CBaseParams::SetDeflautTxFee(int64_t fee)const{
+	paytxfee = fee;
+
+	return fee;
+}
+
 CBaseParams::CBaseParams() {
 	fImporting = false;
 	fReindex = false;
@@ -554,6 +563,18 @@ CBaseParams::CBaseParams() {
 	nInterval = nTargetTimespan / nTargetSpacing;
 	nMaxCoinDay = 30 * 24 * 60 * 60;
 	nSubsidyHalvingInterval = 0;
+	paytxfee = 200000;
+	nDefaultPort = 0;
+	fPrintToConsole= 0;
+	fPrintToToFile = 0;
+	fLogTimestamps = 0;
+	fLogPrintFileLine = 0;
+	fDebug = 0;
+	fDebugAll= 0 ;
+	fServer = 0 ;
+	fServer = 0;
+	nRPCPort = 0;
+
 
 }
 /********************************************************************************/

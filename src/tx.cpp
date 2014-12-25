@@ -13,8 +13,8 @@
 #include "json/json_spirit_value.h"
 #include "json/json_spirit_writer_template.h"
 using namespace json_spirit;
-static string txTypeArray[] = { "NULL_TXTYPE", "REG_ACCT_TX", "NORMAL_TX", "CONTRACT_TX", "FREEZE_TX",
-		"REWARD_TX", "REG_SCRIPT_TX" };
+static string txTypeArray[] = { "NULL_TXTYPE", "REWARD_TX", "REG_ACCT_TX", "COMMON_TX", "CONTRACT_TX", "FREEZE_TX",
+		"REG_SCRIPT_TX" };
 
 
 bool CID::Set(const CRegID &id) {
@@ -189,9 +189,9 @@ bool CRegisterAccountTx::UpdateAccount(int nIndex, CAccountViewCache &view, CVal
 		account.OperateAccount(MINUS_FREE, fund);
 	}
 
-	account.PublicKey = boost::get<CPubKey>(userId);
+//	account.MinerPKey = boost::get<CPubKey>(minerId);
 	account.regID = regId;
-	if (typeid(CPubKey) == typeid(minerId)) {
+	if (typeid(CPubKey) == minerId.type()) {
 		account.MinerPKey = boost::get<CPubKey>(minerId);
 
 		if (account.MinerPKey.IsValid() && !account.MinerPKey.IsFullyValid()) {
@@ -219,16 +219,19 @@ bool CRegisterAccountTx::UndoUpdateAccount(int nIndex, CAccountViewCache &view, 
 				UPDATE_ACCOUNT_FAIL, "bad-read-accountdb");
 	CKeyID keyId;
 	view.GetKeyId(accountId, keyId);
+
+	if (llFees > 0) {
+		CAccountOperLog accountOperLog;
+		if (!txundo.GetAccountOperLog(keyId, accountOperLog))
+			return state.DoS(100, ERROR("UpdateAccounts() : read keyId=%s tx undo info error", keyId.GetHex()),
+					UPDATE_ACCOUNT_FAIL, "bad-read-txundoinfo");
+		oldAccount.UndoOperateAccount(accountOperLog);
+	}
+
 	if (!oldAccount.IsEmptyValue()) {
 		CPubKey empPubKey;
 		oldAccount.PublicKey = empPubKey;
-		if (llFees > 0) {
-			CAccountOperLog accountOperLog;
-			if (!txundo.GetAccountOperLog(keyId, accountOperLog))
-				return state.DoS(100, ERROR("UpdateAccounts() : read keyId=%s tx undo info error", keyId.GetHex()),
-						UPDATE_ACCOUNT_FAIL, "bad-read-txundoinfo");
-			oldAccount.UndoOperateAccount(accountOperLog);
-		}
+		oldAccount.MinerPKey = empPubKey;
 		CUserID userId(keyId);
 		view.SetAccount(userId, oldAccount);
 	} else {
@@ -739,7 +742,7 @@ bool CRewardTransaction::CheckTransction(CValidationState &state, CAccountViewCa
 
 bool CRegistScriptTx::UpdateAccount(int nIndex, CAccountViewCache &view,CValidationState &state, CTxUndo &txundo,
 		int nHeight, CTransactionDBCache &txCache, CScriptDBViewCache &scriptCache) {
-	LogPrint("INFO" ,"registscript UpdateAccount\n");
+//	LogPrint("INFO" ,"registscript UpdateAccount\n");
 	CID id(regAccountId);
 	CAccount acctInfo;
 	if (!view.GetAccount(regAccountId, acctInfo)) {
@@ -1013,24 +1016,28 @@ bool CTxUndo::GetAccountOperLog(const CKeyID &keyId, CAccountOperLog &accountOpe
 	return false;
 }
 
-void CAccount::CompactAccount(int nCurHeight) {
-	if (nCurHeight<=0) {
-		return ;
+bool CAccount::CompactAccount(int nCurHeight) {
+	if (nCurHeight <= 0) {
+		return false;
 	}
-	MergerFund(vRewardFund, nCurHeight);
-	MergerFund(vFreeze, nCurHeight);
-	MergerFund(vSelfFreeze, nCurHeight);
-	MergerFund(vFreedomFund, nCurHeight);
+
+	bool bMergeRewardRes = MergerFund(vRewardFund, nCurHeight);
+	bool bMergevFreezeRes = MergerFund(vFreeze, nCurHeight);
+	bool bMergeSelfRes = MergerFund(vSelfFreeze, nCurHeight);
+	bool bMergeFreeRes = MergerFund(vFreedomFund, nCurHeight);
+	return bMergeRewardRes||bMergevFreezeRes||bMergeSelfRes||bMergeFreeRes;
 }
 
-void CAccount::MergerFund(vector<CFund> &vFund, int nCurHeight) {
+bool CAccount::MergerFund(vector<CFund> &vFund, int nCurHeight) {
 	stable_sort(vFund.begin(), vFund.end(), greater<CFund>());
 	uint64_t value = 0;
 	vector<CFund> vMinusFunds;
 	vector<CFund> vAddFunds;
 	vector<CFund>::reverse_iterator iterFund = vFund.rbegin();
 	bool bMergeFund = false;
+	bool bHasMergd = false;
 	for (; iterFund != vFund.rend();) {
+
 		int nMergerType(0);
 		if (iterFund->IsMergeFund(nCurHeight, nMergerType)) {
 			bMergeFund = true;
@@ -1049,6 +1056,7 @@ void CAccount::MergerFund(vector<CFund> &vFund, int nCurHeight) {
 		if (!bMergeFund) {
 			break;
 		} else {
+			bHasMergd = true;
 			bMergeFund = false;
 		}
 	}
@@ -1068,6 +1076,8 @@ void CAccount::MergerFund(vector<CFund> &vFund, int nCurHeight) {
 		COperFund OperLog(ADD_FUND, vAddFunds);
 		WriteOperLog(OperLog);
 	}
+
+	return bHasMergd;
 }
 
 void CAccount::WriteOperLog(const COperFund &operLog) {
@@ -1470,7 +1480,23 @@ Object CAccount::ToJosnObj() const
 }
 
 string CAccount::ToString() const {
-	return  write_string(Value(ToJosnObj()),true);
+	string str;
+	str += strprintf("keyID=%s, publicKey=%s, minerpubkey=%s, values=%ld\n",
+	HexStr(keyID).c_str(), HexStr(PublicKey).c_str(), HexStr(MinerPKey).c_str(), llValues);
+	for (unsigned int i = 0; i < vRewardFund.size(); ++i) {
+		str += "    " + vRewardFund[i].ToString() + "\n";
+	}
+	for (unsigned int i = 0; i < vFreedomFund.size(); ++i) {
+		str += "    " + vFreedomFund[i].ToString() + "\n";
+	}
+	for (unsigned int i = 0; i < vFreeze.size(); ++i) {
+		str += "    " + vFreeze[i].ToString() + "\n";
+	}
+	for (unsigned int i = 0; i < vSelfFreeze.size(); ++i) {
+		str += "    " + vSelfFreeze[i].ToString() + "\n";
+	}
+	return str;
+	//return  write_string(Value(ToJosnObj()),true);
 }
 
 void CAccount::WriteOperLog(AccountOper emOperType, const CFund &fund, bool bAuthorizated) {
@@ -1664,7 +1690,7 @@ bool CAccount::IsFundValid(OperType type, const CFund &fund, int nHeight, const 
 bool CAccount::OperateAccount(OperType type, const CFund &fund, int nHeight,
 		const vector_unsigned_char* pscriptID,
 		bool bCheckAuthorized) {
-	assert(IsCompacted(nHeight));
+	assert(false == CompactAccount(nHeight));
 	assert(keyID != uint160(0));
 	if (keyID != accountOperLog.keyID)
 		accountOperLog.keyID = keyID;
@@ -1798,18 +1824,6 @@ bool CAccount::GetUserData(const vector_unsigned_char& scriptID, vector<unsigned
 
 	vData = mapAuthorizate[scriptID].GetUserData();
 	return true;
-}
-
-uint256 CAccount::GetHash() const {
-	return SerializeHash(*this);
-}
-
-bool CAccount::IsCompacted(int nCurRunTimeHeight) {
-	uint256 beforeHash = GetHash();
-	CompactAccount(nCurRunTimeHeight);
-	uint256 afterHash = GetHash();
-	bool bRet = (beforeHash == afterHash);
-	return bRet;
 }
 
 void CRegID::SetRegID(const vector<unsigned char>& vIn) {

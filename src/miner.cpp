@@ -217,7 +217,7 @@ void GetPriorityTx(vector<TxPriority> &vecPriority, map<uint256, vector<COrphan*
 //				make_heap(vecPriority.begin(), vecPriority.end(), comparer);
 //			}
 //
-//            if(NORMAL_TX == pBaseTx->nTxType || GENTOSECURE_TX == pBaseTx->nTxType)
+//            if(COMMON_TX == pBaseTx->nTxType || GENTOSECURE_TX == pBaseTx->nTxType)
 //            {
 //            	const CTransaction& tx = *((CTransaction *)vecPriority.front().get<2>());
 //            	// Legacy limits on sigOps:
@@ -406,7 +406,7 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 				shared_ptr<CBaseTransaction> pBaseTx = pBlock->vptx[i];
 				if (txCacheTemp.IsContainTx(pBaseTx->GetHash())) {
 					LogPrint("ERROR","CreatePosTx duplicate tx hash:%s\n", pBaseTx->GetHash().GetHex());
-					mempool.mapTx.erase(pBaseTx->GetHash());
+//					mempool.mapTx.erase(pBaseTx->GetHash());
 					return false;
 				}
 				CTxUndo txundo;
@@ -414,8 +414,7 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 
 				if (!pBaseTx->UpdateAccount(i, accView, state, txundo, pPrevIndex->nHeight + 1, txCacheTemp, contractScriptTemp)) {
 					LogPrint("ERROR","tx hash:%s transaction is invalid\n", pBaseTx->GetHash().GetHex());
-
-					mempool.mapTx.erase(pBaseTx->GetHash());
+//					mempool.mapTx.erase(pBaseTx->GetHash());
 					return false;
 				}
 			}
@@ -472,7 +471,7 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 		postxinfo.hashMerkleRoot = item.BuildMerkleTree(pPrevIndex->nHeight);
 		postxinfo.nValues = item.llValues;
 		postxinfo.nTime = pBlock->nTime; //max(pPrevIndex->GetMedianTimePast() + 1, GetAdjustedTime());
-		for (pBlock->nNonce = 0; pBlock->nNonce < maxNonce; pBlock->nNonce++) {
+		for (pBlock->nNonce = 0; pBlock->nNonce < maxNonce; ++pBlock->nNonce) {
 			postxinfo.nNonce = pBlock->nNonce;
 			uint256 curhash = postxinfo.GetHash();
 
@@ -529,7 +528,7 @@ bool CreatePosTx(const CBlockIndex *pPrevIndex, CBlock *pBlock,set<CKeyID>&setCr
 //					cout << "miner keyid's pubkey:" << HexStr(tep.begin(),tep.end()) << endl;
 //					cout << "miner item's accont:" << item.ToString() << endl;
 
-					if (pwalletMain->Sign(item.keyID,pBlock->SignatureHash(), pBlock->vSignature,true)) {
+					if (pwalletMain->Sign(item.keyID,pBlock->SignatureHash(), pBlock->vSignature,item.MinerPKey.IsValid())) {
 //						cout << "miner signature:" << HexStr(pBlock->vSignature) << endl;
 						LogPrint("INFO","Create new block,hash:%s\n", pBlock->GetHash().GetHex());
 						return true;
@@ -586,10 +585,9 @@ bool VerifyPosTx(const CBlockIndex *pPrevIndex, CAccountViewCache &accView, cons
 
 		if (view.GetAccount(prtx->account, account)) {
 			//available acc
-//			cout << "check block hash:" << pBlock->SignatureHash().GetHex() << endl;
+//     		cout << "check block hash:" << pBlock->SignatureHash().GetHex() << endl;
 //			cout << "check signature:" << HexStr(pBlock->vSignature) << endl;
-//			cout << "check secureAcc " << secureAcc.ToString() << endl;
-//			cout << "miner regId :" << secureAcc.regID.ToString() << endl;
+//			cout <<"account miner"<< account.ToString()<< endl;
 
 			if (!account.PublicKey.Verify(pBlock->SignatureHash(), pBlock->vSignature)) {
 				if (!account.MinerPKey.Verify(pBlock->SignatureHash(), pBlock->vSignature)) {
@@ -771,6 +769,10 @@ CBlockTemplate* CreateNewBlock() {
 
 			CTxUndo txundo;
 			CValidationState state;
+			if(pBaseTx->IsCoinBase())
+			{
+				assert(0); //never come here
+			}
 			if (!pBaseTx->UpdateAccount(nBlockTx + 1, accviewtemp, state, txundo, pIndexPrev->nHeight + 1,
 					txCacheTemp, contractScriptTemp)) {
 				continue;
@@ -778,6 +780,7 @@ CBlockTemplate* CreateNewBlock() {
 			nBlockTx++;
 			pblock->vptx.push_back(stx);
 			nFees += pBaseTx->GetFee();
+			nBlockSize += stx->GetSerializeSize(SER_NETWORK, PROTOCOL_VERSION);
 
 		}
 
@@ -876,9 +879,8 @@ void static SoypayMiner(CWallet *pwallet) {
 
 
 
-
+			unsigned int lasttime = 0xFFFFFFFF;
 			while (true) {
-				unsigned int lasttime = 0xFFFFFFFF;
 				//获取时间 同时等待下次时间到
 				auto GetNextTimeAndSleep = [&]() {
 					while(max(pindexPrev->GetMedianTimePast() + 1, GetAdjustedTime()) == lasttime)
@@ -897,14 +899,13 @@ void static SoypayMiner(CWallet *pwallet) {
 					CheckWork(pblock, *pwallet);
 					SetThreadPriority(THREAD_PRIORITY_LOWEST);
 
-					if (SysCfg().NetworkID() == CBaseParams::REGTEST)
-						throw boost::thread_interrupted();
-//					::MilliSleep(800);
+					if (SysCfg().NetworkID() != CBaseParams::MAIN)
+						if(SysCfg().GetBoolArg("-iscutmine", false)== false)
+						{
+						  throw boost::thread_interrupted();
+						}
 					break;
 				}
-//				else
-//					break;
-//				::MilliSleep(800);
 
 				// Check for stop or if block needs to be rebuilt
 				boost::this_thread::interruption_point();
@@ -934,6 +935,8 @@ uint256 CreateBlockWithAppointedAddr(CKeyID const &keyID)
 			return false;
 		CBlock *pblock = &pblocktemplate.get()->block;
 
+		int nBlockSize = pblock->GetSerializeSize(SER_NETWORK, PROTOCOL_VERSION);
+
 		int64_t nStart = GetTime();
 		while (true) {
 
@@ -943,6 +946,7 @@ uint256 CreateBlockWithAppointedAddr(CKeyID const &keyID)
 			setCreateKey.insert(keyID);
 			if (CreatePosTx(pindexPrev, pblock,setCreateKey)) {
 				CheckWork(pblock, *pwalletMain);
+				int nBlockSize = pblock->GetSerializeSize(SER_NETWORK, PROTOCOL_VERSION);
 			}
 			if(setCreateKey.empty())
 			{
@@ -962,27 +966,20 @@ uint256 CreateBlockWithAppointedAddr(CKeyID const &keyID)
 void GenerateSoys(bool fGenerate, CWallet* pwallet, int nThreads) {
 	static boost::thread_group* minerThreads = NULL;
 
-	if (nThreads != 0) {//in pos system one thread is enough  marked by ranger.shi
-		nThreads = 1;
-//		if (SysCfg().NetworkID() == CBaseParams::REGTEST)
-//			nThreads = 1;
-//		else
-//			nThreads = boost::thread::hardware_concurrency();
-	}
-
-
 	if (minerThreads != NULL) {
 		minerThreads->interrupt_all();
+		SysCfg().SoftSetArgCover("-ismining", "0");
 		delete minerThreads;
 		minerThreads = NULL;
 	}
 
-	if (nThreads == 0 || !fGenerate)
+	if (!fGenerate)
 		return;
-
+	//in pos system one thread is enough  marked by ranger.shi
 	minerThreads = new boost::thread_group();
-	for (int i = 0; i < nThreads; i++)
-		minerThreads->create_thread(boost::bind(&SoypayMiner, pwallet));
+	minerThreads->create_thread(boost::bind(&SoypayMiner, pwallet));
+
+	SysCfg().SoftSetArgCover("-ismining", "1");
 //	minerThreads->join_all();
 }
 

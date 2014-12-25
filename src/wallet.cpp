@@ -26,8 +26,8 @@ using namespace boost::assign;
 using namespace std;
 using namespace boost;
 
-// Settings
-int64_t nTransactionFee = DEFAULT_TRANSACTION_FEE;
+
+
 
 string CWallet:: defaultFilename("");
 //////////////////////////////////////////////////////////////////////////////
@@ -72,31 +72,11 @@ bool CWallet::AddPubKey(const CPubKey& pk)
 		return false;
 	}
 	mKeyPool[tem.GetCKeyID()] = tem;
-	return FushToDisk();
+	return db.WriteKeyStoreValue(tem.GetCKeyID(),tem);
 }
 
 bool CWallet::FushToDisk() const {
-	AssertLockHeld(cs_wallet);
-	 filesystem::path blocksDir = GetDataDir() / strWalletFile;
-//    FILE* fp = fopen(blocksDir.string().c_str(), "wb");
 
-    FILE* fp = fopen(blocksDir.string().c_str(), "wb");
-	   if (!fp) throw "Cannot open wallet  file";
-
-
-	   CAutoFile filein = CAutoFile(fp, SER_DISK, CLIENT_VERSION);
-
-	    if (!filein)
-	    	throw "Cannot open wallet  file";
-	    filein.clear();
-		try {
-			filein << *this;
-		} catch (...) {
-			throw "save wallet failed";
-		}
-
-		filein.fclose();
-	 return true;
 }
 bool CWallet::AddKey(const CKey& secret) {
 	AssertLockHeld(cs_wallet);
@@ -110,7 +90,7 @@ bool CWallet::AddKey(const CKey& secret) {
 
 	if (!IsCrypted()) {
 		mKeyPool[tem.GetCKeyID()] = tem;
-        return FushToDisk();
+		return db.WriteKeyStoreValue(tem.GetCKeyID(),tem);
 	}
 	else
 	{
@@ -125,7 +105,7 @@ bool CWallet::AddKey(const CKeyStoreValue& storeValue) {
 	}
 	if (!IsCrypted()) {
 		mKeyPool[Pk.GetKeyID()] = storeValue;
-		return true;
+		return db.WriteKeyStoreValue(Pk.GetKeyID(),storeValue);
 	} else {
 		assert(0 && "fix me");
 	}
@@ -143,7 +123,7 @@ bool CWallet::AddKey(const CKey& secret,const CKey& minerKey) {
 
 	if (!IsCrypted()) {
 		mKeyPool[tem.GetCKeyID()] = tem;
-        return FushToDisk();
+		return db.WriteKeyStoreValue(tem.GetCKeyID(),tem);
 	}
 	else
 	{
@@ -213,7 +193,7 @@ bool CWallet::AddKey(const CKey& secret,const CKey& minerKey) {
 ////					return false;
 ////				if (!crypter.Encrypt(vMasterKey, pMasterKey.second.vchCryptedKey))
 ////					return false;
-////				CWalletDB(strWalletFile).WriteMasterKey(pMasterKey.first, pMasterKey.second);
+////				db.WriteMasterKey(pMasterKey.first, pMasterKey.second);
 ////				if (fWasLocked)
 ////					Lock();
 ////				return true;
@@ -227,7 +207,7 @@ bool CWallet::AddKey(const CKey& secret,const CKey& minerKey) {
 void CWallet::SetBestChain(const CBlockLocator& loc) {
 	AssertLockHeld(cs_wallet);
 	bestBlock = loc;
-	FushToDisk();
+
 }
 
 
@@ -318,7 +298,7 @@ void CWallet::SetBestChain(const CBlockLocator& loc) {
 //	if (pwalletdb) {
 //		pwalletdb->WriteOrderPosNext(nOrderPosNext);
 //	} else {
-//		CWalletDB(strWalletFile).WriteOrderPosNext(nOrderPosNext);
+//		db.WriteOrderPosNext(nOrderPosNext);
 //	}
 //	return nRet;
 //}
@@ -331,7 +311,6 @@ void CWallet::SyncTransaction(const uint256 &hash, CBaseTransaction*pTx, const C
 
 	assert(pTx != NULL || pblock != NULL);
 	bool fIsNeedUpDataRegID = false;
-	bool bupdate = false;
 	if(hash == 0 && pTx == NULL) //this is block Sync
 	{
 		uint256 blockhash = pblock->GetHash();
@@ -361,24 +340,25 @@ void CWallet::SyncTransaction(const uint256 &hash, CBaseTransaction*pTx, const C
 					if (sptx->nTxType == REG_ACCT_TX) {
 						fIsNeedUpDataRegID = true;
 					} else if (sptx->nTxType == CONTRACT_TX) {
-						vector<CAccountOperLog> Log;
-						if (GetTxOperLog(hashtx, Log) == true) {
-							assert(newtx.AddOperLog(hashtx, Log));
-						} else {
-							ERROR("GetTxOperLog  error %s", hashtx.GetHex());
-						}
+//						vector<CAccountOperLog> Log;
+//						if (GetTxOperLog(hashtx, Log) == true) {
+//							assert(newtx.AddOperLog(hashtx, Log));
+//						} else {
+//							ERROR("GetTxOperLog  error %s", hashtx.GetHex());
+//						}
 					}
 					newtx.AddTx(hashtx,sptx.get());
-					bupdate = true;
+
 				}
 				if(UnConfirmTx.count(hashtx)> 0){
+					db.EraseUnComFirmedTx(hashtx);
 					UnConfirmTx.erase(hashtx);
-					bupdate = true;
 				}
 			}
 			if (newtx.GetTxSize() > 0 ) //write to disk
 			{
 				mapInBlockTx[blockhash] = newtx; //add to map
+				newtx.WriteToDisk();
 			}
 		};
 		auto DisConnectBlockProgress = [&]() {
@@ -386,7 +366,9 @@ void CWallet::SyncTransaction(const uint256 &hash, CBaseTransaction*pTx, const C
 			int i = 0 ;
 			int index = pblock->nHeight;
 			for (const auto &sptx : pblock->vptx) {
-
+				if(sptx->IsCoinBase()){
+					continue;
+				}
 				CRegID regid(index, i++);
 				if(IsMine(sptx.get())) {
 					if (sptx->nTxType == REG_ACCT_TX) {
@@ -398,15 +380,17 @@ void CWallet::SyncTransaction(const uint256 &hash, CBaseTransaction*pTx, const C
 							}
 					}
 					UnConfirmTx[sptx.get()->GetHash()] = sptx.get()->GetNewInstance();
-					bupdate = true;
+					db.WriteUnComFirmedTx(sptx.get()->GetHash(),UnConfirmTx[sptx.get()->GetHash()]);
+
 				}
 //				Oldtx.AddTx(sptx->GetHash(), sptx.get());
 
 			}
 //			Oldtx.AcceptToMemoryPool(); //add those tx to mempool
 			if (mapInBlockTx.count(blockhash)) {
+				db.EraseBlockTx(blockhash);
 				mapInBlockTx.erase(blockhash);
-				bupdate = true;
+
 			}
 			};
 		auto IsConnect = [&]() // test is connect or disconct
@@ -433,9 +417,6 @@ void CWallet::SyncTransaction(const uint256 &hash, CBaseTransaction*pTx, const C
 		SynchronizSys(*pAccountViewTip);
 	}
 
-	if (bupdate == true || fIsNeedUpDataRegID == true)
-		FushToDisk();
-
 }
 
 //void CWallet::EraseFromWallet(const uint256 &hash) {
@@ -444,7 +425,7 @@ void CWallet::SyncTransaction(const uint256 &hash, CBaseTransaction*pTx, const C
 //	{
 //		LOCK(cs_wallet);
 //		if (mapWalletTx.erase(hash))
-//			CWalletDB(strWalletFile).EraseAccountTx(hash);
+//			db.EraseAccountTx(hash);
 //	}
 //	return;
 //}
@@ -509,11 +490,9 @@ void CWallet::ResendWalletTransactions() {
 			erase.push_back(te.first);
 		}
 	}
-	for (auto& tee : erase) {
+	for (auto const & tee : erase) {
+		db.EraseUnComFirmedTx(tee);
 		UnConfirmTx.erase(tee);
-	}
-	if (erase.size() > 0) {
-		FushToDisk();
 	}
 }
 
@@ -555,83 +534,17 @@ std::tuple<bool, string> CWallet::CommitTransaction(CBaseTransaction *pTx) {
 	}
 	uint256 txhash = pTx->GetHash();
 	UnConfirmTx[txhash] = pTx->GetNewInstance();
+	bool flag =  db.WriteUnComFirmedTx(txhash,UnConfirmTx[txhash]);
 	::RelayTransaction(pTx, txhash);
-	return std::make_tuple (FushToDisk(),txhash.ToString());
+	return std::make_tuple (flag,txhash.ToString());
 
 }
 
 DBErrors CWallet::LoadWallet(bool fFirstRunRet) {
+	  fFirstRunRet = false;
+	  return db.LoadWallet(this);
 
-
-	   filesystem::path blocksDir = GetDataDir() / strWalletFile;
-	if (!exists(blocksDir)) {
-		FushToDisk();
-		return DB_LOAD_OK;
-	}
-	FILE* fp = fopen(blocksDir.string().c_str(), "rb");
-
-
-    CAutoFile filein = CAutoFile(fp, SER_DISK, CLIENT_VERSION);
-    if (!filein)
-    	throw "Cannot open wallet dump file";
-
-
-
-	try {
-		  filein >>  *this;
-	} catch (...) {
-		cout<< "sesail failed !"<< endl;
-	}
-
-
-	filein.fclose();
-//
-////	fFirstRunRet = false;
-//	{
-////		DBErrors nLoadWalletRet =
-//				CWalletDB(strWalletFile, "cr+").LoadWallet(*this);
-////		if (nLoadWalletRet == DB_NEED_REWRITE) {
-////			if (CDB::Rewrite(strWalletFile, "\x04pool")) {
-////				LOCK(cs_wallet);
-//////				setKeyPool.clear();
-////				// Note: can't top-up keypool here, because wallet is locked.
-////				// User will be prompted to unlock wallet the next operation
-////				// the requires a new key.
-////			}
-////		}
-//
-////		if (nLoadWalletRet != DB_LOAD_OK)
-////			return nLoadWalletRet;
-//	}
-////	fFirstRunRet = !vchDefaultKey.IsValid();
-////
-////	uiInterface.LoadWallet(this);
-////
-////	DelInvalidRegID();
-	return DB_LOAD_OK;
 }
-
-DBErrors CWallet::ZapWalletTx() {
-
-	DBErrors nZapWalletTxRet = CWalletDB(strWalletFile, "cr+").ZapWalletTx(this);
-	if (nZapWalletTxRet == DB_NEED_REWRITE) {
-		if (CDB::Rewrite(strWalletFile, "\x04pool")) {
-			LOCK(cs_wallet);
-//			setKeyPool.clear();
-			// Note: can't top-up keypool here, because wallet is locked.
-			// User will be prompted to unlock wallet the next operation
-			// the requires a new key.
-		}
-	}
-
-	if (nZapWalletTxRet != DB_LOAD_OK)
-		return nZapWalletTxRet;
-
-	return DB_LOAD_OK;
-}
-
-
-/***********************************creat tx*********************************************/
 
 
 int64_t CWallet::GetRawBalance(int ncurhigh) const
@@ -650,7 +563,7 @@ int64_t CWallet::GetRawBalance(int ncurhigh) const
 }
 
 
-std::tuple<bool,string>  CWallet::SendMoney(const CRegID &send, const CUserID &rsv, int64_t nValue)
+std::tuple<bool,string>  CWallet::SendMoney(const CRegID &send, const CUserID &rsv, int64_t nValue, int64_t nFee)
 {
 //	if (IsLocked())
 //	{
@@ -664,7 +577,10 @@ std::tuple<bool,string>  CWallet::SendMoney(const CRegID &send, const CUserID &r
 		tx.srcUserId = send;
 		tx.desUserId = rsv;
 		tx.llValues = nValue;
-		tx.llFees = nTransactionFee;
+		if (0 == nFee) {
+			tx.llFees = SysCfg().GetTxFee();
+		}else
+			tx.llFees = nFee;
 		tx.nValidHeight = chainActive.Tip()->nHeight;
 	}
 
@@ -684,7 +600,6 @@ std::tuple<bool,string>  CWallet::SendMoney(const CRegID &send, const CUserID &r
 
 }
 
-/****************************************************************************************/
 
 
 void CWallet::UpdatedTransaction(const uint256 &hashTx) {
@@ -705,7 +620,7 @@ bool CWallet::StartUp() {
 	    return true;
 	};
 
-	 defaultFilename = SysCfg().GetArg("-wallet", "wallet.dat");
+	 defaultFilename = SysCfg().GetArg("-wallet", "wallet");
 	  bool fDisableWallet = SysCfg().GetBoolArg("-disablewallet", false);
     string strDataDir = GetDataDir().string();
 
@@ -867,7 +782,10 @@ bool CWallet::SynchronizRegId(const CKeyID& keyid, const CAccountViewCache& invi
 	CAccountViewCache view(inview);
 	if(count(keyid)> 0)
 	{
-		return mKeyPool[keyid].SynchronizSys(view);
+		if(mKeyPool[keyid].SynchronizSys(view))
+			{
+			return db.WriteKeyStoreValue(keyid,mKeyPool[keyid]);
+			}
 	}
 	return false;
 }
@@ -909,19 +827,42 @@ bool CWallet::GetKeyIds(set<CKeyID>& setKeyID,bool IsMiner) const {
 }
 
 bool CWallet::CleanAll() {
+
+	for_each(UnConfirmTx.begin(), UnConfirmTx.end(),
+			[&](std::map<uint256, std::shared_ptr<CBaseTransaction> >::reference a) {
+				db.EraseUnComFirmedTx(a.first);
+			});
 	UnConfirmTx.clear();
+
+	for_each(mapInBlockTx.begin(), mapInBlockTx.end(), [&](std::map<uint256, CAccountTx >::reference a) {
+		db.EraseUnComFirmedTx(a.first);
+	});
 	mapInBlockTx.clear();
+
 	bestBlock.SetNull();
+
+	for_each(mKeyPool.begin(), mKeyPool.end(), [&](std::map<CKeyID, CKeyStoreValue >::reference a) {
+		db.EraseKeyStoreValue(a.first);
+	});
 	mKeyPool.clear();
+	db.EraseMasterKey();
 	MasterKey.SetNull();
 	return true;
 }
 
 bool CWallet::Sign(const CUserID& Userid, const uint256& hash, vector<unsigned char> &signature,bool IsMiner)const {
 	CKey key;
-	if(GetKey(Userid, key,IsMiner))
+	if(GetKey(Userid, key,IsMiner)){
+//		if(IsMiner == true)
+//		{
+//			cout <<"Sign miner key PubKey"<< key.GetPubKey().ToString()<< endl;
+//			cout <<"Sign miner hash"<< hash.ToString()<< endl;
+//			cout <<"Sign user Id" << boost::get<CKeyID>(Userid).ToString() << endl;
+//		}
 	return(key.Sign(hash, signature));
-    return false;
+	}
+	return false;
+
 }
 
 Object CKeyStoreValue::ToJsonObj()const {
@@ -952,23 +893,41 @@ bool CKeyStoreValue::UnSersailFromJson(const Object& obj){
     return true;
 }
 
+bool CKeyStoreValue::SelfCheck()const {
+  if(mCkey.IsValid())
+  {
+	  if(mCkey.GetPubKey() != mPKey)
+	  {
+		  return false;
+	  }
+  }
+  if(!mPKey.IsValid())
+  {
+	  return false;
+  }
+  return true;
+}
+
 bool CKeyStoreValue::SynchronizSys(CAccountViewCache& view){
 	 CAccount account;
 	if(!view.GetAccount(CUserID(mPKey.GetKeyID()),account))
 	{
 		mregId.clean();
-		mMinerCkey.Clear();
 	}
-	else
+	else if(account.PublicKey.IsValid())//是注册的账户
 	{
 		mregId = account.regID;
 		if(account.PublicKey != mPKey)
 			{
-			ERROR("shit %s acc %s mPKey:%s\r\n","not fix the bug",account.ToString(),this->ToString());
+				ERROR("shit %s acc %s mPKey:%s\r\n","not fix the bug",account.ToString(),this->ToString());
 				assert(0);
 			}
 		if(account.MinerPKey.IsValid())
-		assert(account.MinerPKey == mMinerCkey.GetPubKey());
+			assert(account.MinerPKey == mMinerCkey.GetPubKey());
+	}
+	else//有可能是没有注册的账户
+	{
+		mregId.clean();
 	}
 
 	LogPrint("wallet","%s \r\n",this->ToString());

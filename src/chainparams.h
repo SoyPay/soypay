@@ -48,7 +48,7 @@ protected:
 	mutable bool fBenchmark;
 	mutable bool fTxIndex;
 	mutable int64_t nTimeBestReceived;
-
+	mutable int64_t paytxfee;
 	int64_t nTargetSpacing;
 	int64_t nTargetTimespan;
 	int64_t nInterval;
@@ -78,6 +78,10 @@ public:
 			fPrintToToFile = GetBoolArg("-logprintfofile", false);
 			fLogPrintFileLine = GetBoolArg("-logprintfileline", false);
 		}
+		int64_t nTransactionFee ;
+		if(ParseMoney(GetArg("-paytxfee", ""), nTransactionFee) && nTransactionFee > 0){
+		paytxfee = nTransactionFee;
+		}
 		return true;
 	}
 	virtual string ToString() {
@@ -103,9 +107,10 @@ public:
 	}
 	virtual int GetBlockMaxNonce() const
 	{
-		return 100;
+		return 1000;
 	}
-
+    int64_t GetTxFee()const;
+    int64_t SetDeflautTxFee(int64_t fee)const;
 	virtual string GetDefaultTestDataPath() const
 	{
 		return string("D:\\bitcoin\\data\\");
@@ -346,5 +351,7 @@ extern const CBaseParams &SysParamsTest();
 
 //write for test code
 extern const CBaseParams &SysParamsReg();
+
+extern string initPubKey[];
 
 #endif
